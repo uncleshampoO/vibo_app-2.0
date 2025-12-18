@@ -6,7 +6,7 @@ import UserProfile from './components/UserProfile';
 import { FileText, MessageSquare, Zap, User, Lock, Loader2 } from 'lucide-react';
 
 // Твой рабочий вебхук из прошлого кода
-const WEBHOOK_URL = 'https://viboteam.app.n8n.cloud/webhook-test/vibo-init'; 
+const WEBHOOK_URL = 'https://viboteam.app.n8n.cloud/webhook/vibo-init'; 
 
 const App: React.FC = () => {
   const [mode, setMode] = useState<AppMode>(AppMode.INVOICE);
