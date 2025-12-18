@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Send, Bot, Loader2 } from 'lucide-react';
 
 // 👇 ТВОЯ ССЫЛКА НА ВЕБХУК (Лучше использовать Production без -test)
-const CHAT_WEBHOOK_URL = 'https://viboteam.app.n8n.cloud/webhook/vibo-chat';
+const CHAT_WEBHOOK_URL = 'https://viboteam.app.n8n.cloud/webhook-test/vibo-chat';
 
 interface Message {
   id: string;
