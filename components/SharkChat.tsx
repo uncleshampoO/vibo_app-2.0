@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Bot, Loader2 } from 'lucide-react';
 
-// 👇 ВСТАВЬ СЮДА СВОЙ PRODUCTION WEBHOOK URL (vibo-chat)
-const CHAT_WEBHOOK_URL = 'https://viboteam.app.n8n.cloud/webhook-test/vibo-chat';
+// 👇 ТВОЯ ССЫЛКА НА ВЕБХУК (Лучше использовать Production без -test)
+const CHAT_WEBHOOK_URL = 'https://viboteam.app.n8n.cloud/webhook/vibo-chat';
 
 interface Message {
   id: string;
@@ -15,7 +15,7 @@ const SharkChat: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: '1',
-      text: "Слушай сюда. Я — Shark Advisor. Я здесь не для того, чтобы вытирать тебе сопли, а чтобы помочь тебе заработать. Какая у тебя проблема? Клиент не платит? Боишься назвать цену? Говори.",
+      text: "Слушай сюда. Я — Shark Advisor. Я здесь не для того, чтобы вытирать тебе сопли. Какая у тебя проблема? Клиент не платит? Боишься назвать цену? Говори.",
       sender: 'shark',
       timestamp: new Date()
     }
@@ -23,6 +23,10 @@ const SharkChat: React.FC = () => {
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // 1. 👇 НОВОЕ: Получаем ID пользователя (или ставим 'guest', если не в Телеграме)
+  // @ts-ignore
+  const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || 'guest_user';
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -47,11 +51,14 @@ const SharkChat: React.FC = () => {
     setIsLoading(true);
 
     try {
-      // Отправляем сообщение в n8n
+      // 2. 👇 ИСПРАВЛЕНО: Отправляем session_id вместе с сообщением
       const response = await fetch(CHAT_WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: userMsg.text }),
+        body: JSON.stringify({ 
+          message: userMsg.text,
+          session_id: tgUserId.toString() // <-- ВОТ ЭТОГО НЕ ХВАТАЛО
+        }),
       });
 
       if (!response.ok) throw new Error('Ошибка сети');
@@ -60,7 +67,7 @@ const SharkChat: React.FC = () => {
       
       const sharkMsg: Message = {
         id: (Date.now() + 1).toString(),
-        text: data.output || "Акула задумалась... (Нет ответа output)", 
+        text: data.output || "...", 
         sender: 'shark',
         timestamp: new Date()
       };
@@ -71,7 +78,7 @@ const SharkChat: React.FC = () => {
       console.error(error);
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
-        text: "Связь прервана. Проверь настройки сервера n8n.",
+        text: "Связь прервана. Акула ушла на обед.",
         sender: 'shark',
         timestamp: new Date()
       };
@@ -90,7 +97,6 @@ const SharkChat: React.FC = () => {
 
   return (
     <div className="flex flex-col h-[600px] bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden backdrop-blur-sm relative shadow-2xl">
-      {/* Шапка чата */}
       <div className="p-4 bg-black/80 border-b border-gray-800 flex items-center justify-between z-10">
         <div className="flex items-center gap-3">
            <div className="bg-vibo-green/10 p-2 rounded-full border border-vibo-green/20 shadow-[0_0_10px_rgba(57,255,20,0.2)]">
@@ -100,35 +106,21 @@ const SharkChat: React.FC = () => {
              <h3 className="font-bold text-white text-sm tracking-wide">SHARK ADVISOR <span className="text-vibo-purple">AI</span></h3>
              <div className="flex items-center gap-1.5">
                <span className="w-1.5 h-1.5 bg-vibo-green rounded-full animate-pulse shadow-[0_0_5px_#39ff14]"></span>
-               <span className="text-[10px] text-gray-400 uppercase tracking-wider">System Online</span>
+               <span className="text-[10px] text-gray-400 uppercase tracking-wider">Online</span>
              </div>
            </div>
         </div>
-        <div className="bg-gray-800/50 border border-gray-700 px-2 py-1 rounded text-[10px] text-gray-400 font-mono">
-          VIBO_CORE v1.2
-        </div>
       </div>
 
-      {/* Окно сообщений */}
       <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar bg-gradient-to-b from-transparent to-black/30">
         {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`}
-          >
-            <div
-              className={`max-w-[85%] rounded-2xl p-4 text-sm leading-relaxed relative ${
+          <div key={msg.id} className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`}>
+            <div className={`max-w-[85%] rounded-2xl p-4 text-sm leading-relaxed relative ${
                 msg.sender === 'user'
                   ? 'bg-vibo-purple text-white rounded-tr-none shadow-[0_5px_15px_rgba(188,19,254,0.2)]'
                   : 'bg-gray-800 text-gray-200 rounded-tl-none border border-gray-700 shadow-lg'
-              }`}
-            >
+              }`}>
               {msg.text}
-              {msg.sender === 'shark' && (
-                 <div className="absolute -bottom-4 -left-2 text-[10px] text-gray-600 font-mono opacity-0 group-hover:opacity-100 transition-opacity">
-                    AI_RESPONSE
-                 </div>
-              )}
             </div>
           </div>
         ))}
@@ -143,7 +135,6 @@ const SharkChat: React.FC = () => {
         <div ref={messagesEndRef} />
       </div>
 
-      {/* Ввод сообщения */}
       <div className="p-4 bg-black/90 border-t border-gray-800 z-10">
         <div className="relative flex items-center gap-2">
           <input
@@ -151,14 +142,14 @@ const SharkChat: React.FC = () => {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyPress}
-            placeholder="Введи вопрос (например: Клиент молчит 2 дня)..."
+            placeholder="Задай вопрос..."
             className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl py-3.5 pl-4 pr-12 focus:outline-none focus:border-vibo-green/50 focus:shadow-[0_0_20px_rgba(57,255,20,0.1)] transition-all placeholder:text-gray-600 text-sm"
             disabled={isLoading}
           />
           <button
             onClick={handleSend}
             disabled={!input.trim() || isLoading}
-            className="absolute right-2 p-2 bg-vibo-green text-black rounded-lg hover:bg-green-400 hover:shadow-[0_0_15px_rgba(57,255,20,0.4)] disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed transition-all transform active:scale-95"
+            className="absolute right-2 p-2 bg-vibo-green text-black rounded-lg hover:bg-green-400 transition-all transform active:scale-95"
           >
             <Send size={18} />
           </button>
