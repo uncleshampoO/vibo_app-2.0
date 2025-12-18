@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { SellerProfile, BuyerProfile, InvoiceItem } from '../types';
-import { Plus, Trash2, Printer, Briefcase, ChevronDown } from 'lucide-react';
+import { Plus, Trash2, Printer, Briefcase, Building2 } from 'lucide-react';
+// Убедись, что generateInvoiceHTML существует в utils
 import { generateInvoiceHTML } from '../utils';
 
 interface InvoiceGeneratorProps {
@@ -8,7 +9,7 @@ interface InvoiceGeneratorProps {
 }
 
 const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
-  // State for Profiles
+  // --- ЛОГИКА (ОСТАВЛЯЕМ КАК БЫЛО) ---
   const [profiles, setProfiles] = useState<SellerProfile[]>(() => {
     const saved = localStorage.getItem('vibo_seller_profiles');
     return saved ? JSON.parse(saved) : [];
@@ -16,7 +17,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
   const [activeProfileId, setActiveProfileId] = useState<string>('');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
 
-  // Invoice State
+  // Состояние Счета
   const [invoiceNumber, setInvoiceNumber] = useState('1');
   const [date, setDate] = useState(new Date().toLocaleDateString('ru-RU'));
   const [buyer, setBuyer] = useState<BuyerProfile>({ name: '', inn: '', kpp: '', address: '' });
@@ -24,7 +25,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     { id: '1', name: 'Услуги по разработке ПО', quantity: 1, unit: 'шт', price: 0 }
   ]);
 
-  // Temporary profile state for editing
+  // Временный профиль для редактирования
   const [tempProfile, setTempProfile] = useState<SellerProfile>({
     id: '', name: '', inn: '', kpp: '', bankName: '', bik: '', accountNumber: '', corrAccount: '', address: ''
   });
@@ -38,7 +39,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
       setActiveProfileId(profiles[0].id);
     }
     if (profiles.length === 0) {
-      setIsEditingProfile(true); // Force creation if empty
+      setIsEditingProfile(true); 
     }
   }, [profiles, activeProfileId]);
 
@@ -81,42 +82,54 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     window.open(url, '_blank');
   };
 
+  // --- СТИЛИ ДЛЯ БЕЛЫХ ПОЛЕЙ (Black Text Fix) ---
+  const whiteInputClass = "w-full p-3 rounded bg-white text-black border border-gray-300 focus:border-vibo-purple focus:outline-none placeholder:text-gray-400";
+
+  // --- РЕНДЕР: ЭКРАН РЕДАКТИРОВАНИЯ ПРОФИЛЯ ---
   if (isEditingProfile || profiles.length === 0) {
     return (
-      <div className="max-w-3xl mx-auto p-6 bg-vibo-darkgray border border-vibo-purple rounded-lg shadow-[0_0_15px_rgba(188,19,254,0.3)]">
-        <h2 className="text-2xl font-bold text-vibo-purple mb-6 uppercase tracking-widest flex items-center">
-          <Briefcase className="mr-2" /> 
+      <div className="max-w-3xl mx-auto p-6 bg-vibo-darkgray border border-vibo-purple rounded-lg shadow-[0_0_15px_rgba(188,19,254,0.3)] animate-fade-in">
+        <h2 className="text-2xl font-bold text-white mb-6 uppercase tracking-widest flex items-center gap-2 border-b border-gray-700 pb-4">
+          <Building2 className="text-vibo-purple" /> 
           {tempProfile.id ? 'Редактировать Компанию' : 'Новая Компания'}
         </h2>
+        
+        {/* 👇 ЗДЕСЬ ИСПРАВЛЕННЫЕ ПОЛЯ (Черный текст на белом) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-           <input placeholder="Название ООО/ИП" className="input-cyber" value={tempProfile.name} onChange={e => setTempProfile({...tempProfile, name: e.target.value})} />
-           <input placeholder="ИНН" className="input-cyber" value={tempProfile.inn} onChange={e => setTempProfile({...tempProfile, inn: e.target.value})} />
-           <input placeholder="КПП" className="input-cyber" value={tempProfile.kpp} onChange={e => setTempProfile({...tempProfile, kpp: e.target.value})} />
-           <input placeholder="Название Банка" className="input-cyber" value={tempProfile.bankName} onChange={e => setTempProfile({...tempProfile, bankName: e.target.value})} />
-           <input placeholder="БИК" className="input-cyber" value={tempProfile.bik} onChange={e => setTempProfile({...tempProfile, bik: e.target.value})} />
-           <input placeholder="Расчетный счет" className="input-cyber" value={tempProfile.accountNumber} onChange={e => setTempProfile({...tempProfile, accountNumber: e.target.value})} />
-           <input placeholder="Корр. счет" className="input-cyber" value={tempProfile.corrAccount} onChange={e => setTempProfile({...tempProfile, corrAccount: e.target.value})} />
-           <input placeholder="URL Логотипа" className="input-cyber" value={tempProfile.logoUrl || ''} onChange={e => setTempProfile({...tempProfile, logoUrl: e.target.value})} />
-           <textarea placeholder="Юр. Адрес" className="input-cyber md:col-span-2" value={tempProfile.address} onChange={e => setTempProfile({...tempProfile, address: e.target.value})} />
-           <input placeholder="ФИО Директора (для подписи)" className="input-cyber" value={tempProfile.director || ''} onChange={e => setTempProfile({...tempProfile, director: e.target.value})} />
-           <input placeholder="ФИО Бухгалтера (для подписи)" className="input-cyber" value={tempProfile.accountant || ''} onChange={e => setTempProfile({...tempProfile, accountant: e.target.value})} />
+           <input placeholder="Название ООО/ИП" className={whiteInputClass} value={tempProfile.name} onChange={e => setTempProfile({...tempProfile, name: e.target.value})} />
+           <input placeholder="ИНН" className={whiteInputClass} value={tempProfile.inn} onChange={e => setTempProfile({...tempProfile, inn: e.target.value})} />
+           <input placeholder="КПП" className={whiteInputClass} value={tempProfile.kpp} onChange={e => setTempProfile({...tempProfile, kpp: e.target.value})} />
+           <input placeholder="Название Банка" className={whiteInputClass} value={tempProfile.bankName} onChange={e => setTempProfile({...tempProfile, bankName: e.target.value})} />
+           <input placeholder="БИК" className={whiteInputClass} value={tempProfile.bik} onChange={e => setTempProfile({...tempProfile, bik: e.target.value})} />
+           <input placeholder="Расчетный счет" className={whiteInputClass} value={tempProfile.accountNumber} onChange={e => setTempProfile({...tempProfile, accountNumber: e.target.value})} />
+           <input placeholder="Корр. счет" className={whiteInputClass} value={tempProfile.corrAccount} onChange={e => setTempProfile({...tempProfile, corrAccount: e.target.value})} />
+           <input placeholder="URL Логотипа" className={whiteInputClass} value={tempProfile.logoUrl || ''} onChange={e => setTempProfile({...tempProfile, logoUrl: e.target.value})} />
+           <textarea placeholder="Юр. Адрес" className={`${whiteInputClass} md:col-span-2 h-24`} value={tempProfile.address} onChange={e => setTempProfile({...tempProfile, address: e.target.value})} />
+           <input placeholder="ФИО Директора" className={whiteInputClass} value={tempProfile.director || ''} onChange={e => setTempProfile({...tempProfile, director: e.target.value})} />
+           <input placeholder="ФИО Бухгалтера" className={whiteInputClass} value={tempProfile.accountant || ''} onChange={e => setTempProfile({...tempProfile, accountant: e.target.value})} />
         </div>
-        <div className="flex justify-end gap-4 mt-6">
+
+        <div className="flex justify-end gap-4 mt-8 pt-4 border-t border-gray-700">
           {profiles.length > 0 && (
-            <button onClick={() => setIsEditingProfile(false)} className="px-4 py-2 text-gray-400 hover:text-white transition">Отмена</button>
+            <button onClick={() => setIsEditingProfile(false)} className="px-6 py-2 rounded text-gray-400 hover:text-white transition hover:bg-white/5">Отмена</button>
           )}
-          <button onClick={handleSaveProfile} className="btn-primary">Сохранить Данные</button>
+          <button onClick={handleSaveProfile} className="bg-vibo-purple hover:bg-purple-600 text-white font-bold py-2 px-6 rounded shadow-lg transition-all">
+            Сохранить Данные
+          </button>
         </div>
       </div>
     );
   }
 
+  // --- РЕНДЕР: ОСНОВНОЙ ЭКРАН ---
   return (
-    <div className="space-y-8 animate-fade-in">
-      {/* Profile Selector */}
-      <div className="flex flex-col md:flex-row justify-between items-center bg-vibo-darkgray p-4 rounded-lg border-l-4 border-vibo-green">
+    <div className="space-y-8 animate-fade-in pb-20">
+      {/* Выбор профиля */}
+      <div className="flex flex-col md:flex-row justify-between items-center bg-gray-900/50 p-4 rounded-xl border border-gray-800 backdrop-blur-sm">
         <div className="flex items-center gap-3 w-full md:w-auto mb-4 md:mb-0">
-           <Briefcase className="text-vibo-green" />
+           <div className="bg-vibo-green/10 p-2 rounded text-vibo-green">
+             <Briefcase size={20} />
+           </div>
            <select 
              className="bg-black text-white p-2 rounded border border-gray-700 outline-none focus:border-vibo-green w-full md:w-64"
              value={activeProfileId}
@@ -125,53 +138,61 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
              {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
            </select>
         </div>
-        <button onClick={() => { setTempProfile(activeProfile); setIsEditingProfile(true); }} className="text-sm text-vibo-purple hover:text-white underline underline-offset-4">
-          Редактировать реквизиты
-        </button>
-        <button onClick={() => { setTempProfile({ id: '', name: '', inn: '', kpp: '', bankName: '', bik: '', accountNumber: '', corrAccount: '', address: '' }); setIsEditingProfile(true); }} className="text-sm text-vibo-green hover:text-white ml-4">
-          + Добавить компанию
-        </button>
+        <div className="flex gap-4">
+          <button onClick={() => { setTempProfile(activeProfile); setIsEditingProfile(true); }} className="text-sm text-gray-400 hover:text-white hover:underline decoration-vibo-purple underline-offset-4 transition-all">
+            Изменить реквизиты
+          </button>
+          <button onClick={() => { setTempProfile({ id: '', name: '', inn: '', kpp: '', bankName: '', bik: '', accountNumber: '', corrAccount: '', address: '' }); setIsEditingProfile(true); }} className="text-sm text-vibo-green hover:text-green-400 font-bold">
+            + Новая
+          </button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Form Area */}
+        {/* Левая колонка: Параметры */}
         <div className="lg:col-span-1 space-y-6">
-          <div className="p-4 bg-vibo-darkgray rounded-lg border border-gray-800">
-            <h3 className="text-vibo-purple font-bold mb-3 uppercase text-sm">Параметры Счета</h3>
-            <div className="grid grid-cols-2 gap-2">
-              <input type="text" placeholder="№ Счета" value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} className="input-cyber" />
-              <input type="text" placeholder="Дата" value={date} onChange={e => setDate(e.target.value)} className="input-cyber" />
+          <div className="p-5 bg-gray-900/50 rounded-xl border border-gray-800">
+            <h3 className="text-vibo-purple font-bold mb-4 uppercase text-xs tracking-wider">Параметры Счета</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                 <label className="text-[10px] text-gray-500 uppercase ml-1">№ Счета</label>
+                 <input type="text" value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} className="w-full bg-black border border-gray-700 rounded p-2 text-white focus:border-vibo-purple outline-none" />
+              </div>
+              <div>
+                 <label className="text-[10px] text-gray-500 uppercase ml-1">Дата</label>
+                 <input type="text" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-black border border-gray-700 rounded p-2 text-white focus:border-vibo-purple outline-none" />
+              </div>
             </div>
           </div>
 
-          <div className="p-4 bg-vibo-darkgray rounded-lg border border-gray-800">
-            <h3 className="text-vibo-green font-bold mb-3 uppercase text-sm">Покупатель</h3>
-            <div className="space-y-2">
-              <input type="text" placeholder="Название Клиента" value={buyer.name} onChange={e => setBuyer({...buyer, name: e.target.value})} className="input-cyber w-full" />
-              <input type="text" placeholder="ИНН" value={buyer.inn} onChange={e => setBuyer({...buyer, inn: e.target.value})} className="input-cyber w-full" />
-              <textarea placeholder="Адрес" value={buyer.address} onChange={e => setBuyer({...buyer, address: e.target.value})} className="input-cyber w-full h-20" />
+          <div className="p-5 bg-gray-900/50 rounded-xl border border-gray-800">
+            <h3 className="text-vibo-green font-bold mb-4 uppercase text-xs tracking-wider">Покупатель (Клиент)</h3>
+            <div className="space-y-3">
+              <input type="text" placeholder="Название Клиента" value={buyer.name} onChange={e => setBuyer({...buyer, name: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white placeholder-gray-600 focus:border-vibo-green outline-none" />
+              <input type="text" placeholder="ИНН" value={buyer.inn} onChange={e => setBuyer({...buyer, inn: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white placeholder-gray-600 focus:border-vibo-green outline-none" />
+              <textarea placeholder="Адрес покупателя" value={buyer.address} onChange={e => setBuyer({...buyer, address: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white placeholder-gray-600 focus:border-vibo-green outline-none h-20 resize-none" />
             </div>
           </div>
         </div>
 
-        {/* Items Area */}
+        {/* Правая колонка: Товары */}
         <div className="lg:col-span-2 space-y-4">
-           <div className="bg-vibo-darkgray p-4 rounded-lg border border-gray-800 min-h-[400px]">
-              <div className="flex justify-between mb-4">
-                <h3 className="text-white font-bold uppercase">Позиции</h3>
-                <button onClick={addItem} className="flex items-center text-xs bg-vibo-purple text-white px-2 py-1 rounded hover:bg-purple-700">
+           <div className="bg-gray-900/50 p-5 rounded-xl border border-gray-800 min-h-[400px] flex flex-col">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-white font-bold uppercase text-sm tracking-wider">Позиции в счете</h3>
+                <button onClick={addItem} className="flex items-center text-xs bg-vibo-purple/20 text-vibo-purple border border-vibo-purple/50 px-3 py-1.5 rounded-full hover:bg-vibo-purple hover:text-white transition-all">
                   <Plus size={14} className="mr-1"/> Добавить
                 </button>
               </div>
               
-              <div className="space-y-2">
+              <div className="space-y-3 flex-grow">
                 {items.map((item, idx) => (
-                  <div key={item.id} className="grid grid-cols-12 gap-2 items-center bg-black p-3 rounded border border-gray-800 hover:border-vibo-green transition group">
-                    <div className="col-span-1 text-gray-500 text-sm text-center">{idx + 1}</div>
+                  <div key={item.id} className="grid grid-cols-12 gap-2 items-center bg-black p-3 rounded-lg border border-gray-800 hover:border-gray-600 transition group">
+                    <div className="col-span-1 text-gray-500 text-xs text-center font-mono bg-gray-900 rounded py-1">{idx + 1}</div>
                     <div className="col-span-5">
                       <input 
-                        className="bg-transparent text-white w-full outline-none placeholder-gray-700"
-                        placeholder="Наименование услуги/товара"
+                        className="bg-transparent text-white w-full outline-none placeholder-gray-700 text-sm"
+                        placeholder="Название услуги/товара"
                         value={item.name}
                         onChange={(e) => updateItem(item.id, 'name', e.target.value)}
                       />
@@ -179,7 +200,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
                     <div className="col-span-2">
                        <input 
                         type="number"
-                        className="bg-transparent text-right text-vibo-green w-full outline-none"
+                        className="bg-transparent text-center text-vibo-green w-full outline-none text-sm font-mono bg-green-900/10 rounded"
                         value={item.quantity}
                         onChange={(e) => updateItem(item.id, 'quantity', Number(e.target.value))}
                       />
@@ -187,30 +208,30 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
                     <div className="col-span-3">
                        <input 
                         type="number"
-                        className="bg-transparent text-right text-vibo-purple w-full outline-none font-mono"
+                        className="bg-transparent text-right text-white w-full outline-none font-mono text-sm"
                         value={item.price}
                         onChange={(e) => updateItem(item.id, 'price', Number(e.target.value))}
                       />
                     </div>
                     <div className="col-span-1 text-right">
-                       <button onClick={() => removeItem(item.id)} className="text-gray-600 hover:text-red-500 opacity-0 group-hover:opacity-100 transition">
-                         <Trash2 size={16} />
+                       <button onClick={() => removeItem(item.id)} className="text-gray-600 hover:text-red-500 transition p-1">
+                         <Trash2 size={14} />
                        </button>
                     </div>
                   </div>
                 ))}
               </div>
 
-              <div className="mt-8 pt-4 border-t border-gray-700 flex justify-end items-end flex-col">
-                 <div className="text-gray-400 text-sm">Итого:</div>
-                 <div className="text-3xl font-mono text-vibo-green font-bold">
+              <div className="mt-8 pt-6 border-t border-gray-700 flex justify-between items-end">
+                 <div className="text-gray-500 text-xs uppercase tracking-widest">Итого к оплате</div>
+                 <div className="text-3xl font-mono text-vibo-green font-bold shadow-green-glow">
                    {new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(items.reduce((acc, i) => acc + (i.price * i.quantity), 0))}
                  </div>
               </div>
            </div>
            
-           <button onClick={handleGenerate} className="w-full py-4 bg-gradient-to-r from-vibo-purple to-purple-900 text-white font-bold uppercase tracking-widest rounded hover:shadow-[0_0_20px_#bc13fe] transition duration-300 flex justify-center items-center gap-2">
-             <Printer /> Сгенерировать HTML для печати
+           <button onClick={handleGenerate} className="w-full py-4 bg-white text-black font-bold uppercase tracking-widest rounded-xl hover:bg-gray-200 shadow-xl transition duration-300 flex justify-center items-center gap-3 active:scale-95">
+             <Printer size={20} /> Скачать PDF / Печать
            </button>
         </div>
       </div>
