@@ -1,11 +1,26 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { ChatMessage } from '../types';
-import { sendMessageToShark } from '../services/geminiService';
-import { Send, Zap, AlertTriangle } from 'lucide-react';
+import { Send, Bot, Loader2 } from 'lucide-react';
+
+// 👇 ВСТАВЬ СЮДА СВОЙ PRODUCTION WEBHOOK URL (vibo-chat)
+const CHAT_WEBHOOK_URL = 'https://viboteam.app.n8n.cloud/webhook/vibo-chat';
+
+interface Message {
+  id: string;
+  text: string;
+  sender: 'user' | 'shark';
+  timestamp: Date;
+}
 
 const SharkChat: React.FC = () => {
+  const [messages, setMessages] = useState<Message[]>([
+    {
+      id: '1',
+      text: "Слушай сюда. Я — Shark Advisor. Я здесь не для того, чтобы вытирать тебе сопли, а чтобы помочь тебе заработать. Какая у тебя проблема? Клиент не платит? Боишься назвать цену? Говори.",
+      sender: 'shark',
+      timestamp: new Date()
+    }
+  ]);
   const [input, setInput] = useState('');
-  const [history, setHistory] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -15,27 +30,58 @@ const SharkChat: React.FC = () => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [history]);
+  }, [messages]);
 
   const handleSend = async () => {
     if (!input.trim() || isLoading) return;
 
-    const userMsg: ChatMessage = { role: 'user', text: input };
-    setHistory(prev => [...prev, userMsg]);
+    const userMsg: Message = {
+      id: Date.now().toString(),
+      text: input,
+      sender: 'user',
+      timestamp: new Date()
+    };
+
+    setMessages(prev => [...prev, userMsg]);
     setInput('');
     setIsLoading(true);
 
     try {
-      const responseText = await sendMessageToShark(history, input);
-      setHistory(prev => [...prev, { role: 'model', text: responseText }]);
+      // Отправляем сообщение в n8n
+      const response = await fetch(CHAT_WEBHOOK_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userMsg.text }),
+      });
+
+      if (!response.ok) throw new Error('Ошибка сети');
+
+      const data = await response.json();
+      
+      const sharkMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        text: data.output || "Акула задумалась... (Нет ответа output)", 
+        sender: 'shark',
+        timestamp: new Date()
+      };
+
+      setMessages(prev => [...prev, sharkMsg]);
+
     } catch (error) {
-      setHistory(prev => [...prev, { role: 'model', text: "Shark is offline. Check your connection.", isError: true }]);
+      console.error(error);
+      const errorMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        text: "Связь прервана. Проверь настройки сервера n8n.",
+        sender: 'shark',
+        timestamp: new Date()
+      };
+      setMessages(prev => [...prev, errorMsg]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent) => {
+  const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -43,80 +89,79 @@ const SharkChat: React.FC = () => {
   };
 
   return (
-    <div className="flex flex-col h-[calc(100vh-140px)] bg-vibo-darkgray rounded-lg border border-gray-800 overflow-hidden shadow-[0_0_30px_rgba(0,0,0,0.5)]">
-      {/* Header */}
-      <div className="bg-black p-4 border-b border-gray-800 flex items-center justify-between">
-         <div className="flex items-center gap-3">
-            <div className="w-3 h-3 rounded-full bg-red-500 animate-pulse"></div>
-            <h2 className="text-white font-bold tracking-widest uppercase text-sm">Vibo Shark <span className="text-gray-600 text-xs normal-case ml-2">// Online Advisor</span></h2>
-         </div>
-         <div className="text-xs text-gray-500">NO MERCY MODE</div>
-      </div>
-
-      {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-6">
-         {history.length === 0 && (
-           <div className="h-full flex flex-col items-center justify-center text-gray-600 opacity-50">
-             <Zap size={48} className="mb-4 text-vibo-purple" />
-             <p className="text-center max-w-md">
-               Shark готов. Спроси про сложного клиента, возражение "Дорого", или как закрыть сделку. 
-               <br/><span className="text-xs mt-2 block">Не ной. Действуй.</span>
-             </p>
+    <div className="flex flex-col h-[600px] bg-gray-900/50 border border-gray-800 rounded-xl overflow-hidden backdrop-blur-sm relative shadow-2xl">
+      {/* Шапка чата */}
+      <div className="p-4 bg-black/80 border-b border-gray-800 flex items-center justify-between z-10">
+        <div className="flex items-center gap-3">
+           <div className="bg-vibo-green/10 p-2 rounded-full border border-vibo-green/20 shadow-[0_0_10px_rgba(57,255,20,0.2)]">
+             <Bot size={20} className="text-vibo-green" />
            </div>
-         )}
-         
-         {history.map((msg, idx) => (
-           <div key={idx} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-             <div className={`max-w-[85%] md:max-w-[70%] p-4 rounded-xl relative ${
-               msg.role === 'user' 
-                 ? 'bg-gradient-to-br from-gray-800 to-gray-900 text-gray-100 rounded-tr-none border border-gray-700' 
-                 : 'bg-black text-vibo-green border border-vibo-green/30 rounded-tl-none shadow-[0_0_15px_rgba(57,255,20,0.1)]'
-             }`}>
-                {msg.isError && <AlertTriangle className="inline mr-2 text-red-500" size={16} />}
-                <div className="whitespace-pre-wrap leading-relaxed text-sm md:text-base">
-                  {msg.text}
-                </div>
-                {msg.role === 'model' && (
-                  <div className="absolute -bottom-5 left-0 text-[10px] text-gray-600 uppercase font-bold tracking-widest">Vibo Shark System</div>
-                )}
+           <div>
+             <h3 className="font-bold text-white text-sm tracking-wide">SHARK ADVISOR <span className="text-vibo-purple">AI</span></h3>
+             <div className="flex items-center gap-1.5">
+               <span className="w-1.5 h-1.5 bg-vibo-green rounded-full animate-pulse shadow-[0_0_5px_#39ff14]"></span>
+               <span className="text-[10px] text-gray-400 uppercase tracking-wider">System Online</span>
              </div>
            </div>
-         ))}
-         
-         {isLoading && (
-            <div className="flex justify-start">
-              <div className="bg-black border border-gray-800 px-4 py-3 rounded-xl rounded-tl-none">
-                 <div className="flex gap-1">
-                   <div className="w-2 h-2 bg-vibo-purple rounded-full animate-bounce"></div>
-                   <div className="w-2 h-2 bg-vibo-purple rounded-full animate-bounce delay-100"></div>
-                   <div className="w-2 h-2 bg-vibo-purple rounded-full animate-bounce delay-200"></div>
-                 </div>
-              </div>
-            </div>
-         )}
-         <div ref={messagesEndRef} />
+        </div>
+        <div className="bg-gray-800/50 border border-gray-700 px-2 py-1 rounded text-[10px] text-gray-400 font-mono">
+          VIBO_CORE v1.2
+        </div>
       </div>
 
-      {/* Input */}
-      <div className="p-4 bg-black border-t border-gray-800">
+      {/* Окно сообщений */}
+      <div className="flex-1 overflow-y-auto p-4 space-y-6 custom-scrollbar bg-gradient-to-b from-transparent to-black/30">
+        {messages.map((msg) => (
+          <div
+            key={msg.id}
+            className={`flex ${msg.sender === 'user' ? 'justify-end' : 'justify-start'} animate-in slide-in-from-bottom-2 duration-300`}
+          >
+            <div
+              className={`max-w-[85%] rounded-2xl p-4 text-sm leading-relaxed relative ${
+                msg.sender === 'user'
+                  ? 'bg-vibo-purple text-white rounded-tr-none shadow-[0_5px_15px_rgba(188,19,254,0.2)]'
+                  : 'bg-gray-800 text-gray-200 rounded-tl-none border border-gray-700 shadow-lg'
+              }`}
+            >
+              {msg.text}
+              {msg.sender === 'shark' && (
+                 <div className="absolute -bottom-4 -left-2 text-[10px] text-gray-600 font-mono opacity-0 group-hover:opacity-100 transition-opacity">
+                    AI_RESPONSE
+                 </div>
+              )}
+            </div>
+          </div>
+        ))}
+        {isLoading && (
+          <div className="flex justify-start animate-pulse">
+             <div className="bg-gray-800/50 border border-gray-700 rounded-2xl rounded-tl-none p-4 flex items-center gap-3">
+                <Loader2 size={16} className="animate-spin text-vibo-green" />
+                <span className="text-xs text-vibo-green font-mono tracking-widest">ANALYZING...</span>
+             </div>
+          </div>
+        )}
+        <div ref={messagesEndRef} />
+      </div>
+
+      {/* Ввод сообщения */}
+      <div className="p-4 bg-black/90 border-t border-gray-800 z-10">
         <div className="relative flex items-center gap-2">
-           <textarea 
-             value={input}
-             onChange={(e) => setInput(e.target.value)}
-             onKeyDown={handleKeyDown}
-             placeholder="Опиши ситуацию. Будь краток..."
-             className="w-full bg-vibo-darkgray text-white p-3 pr-12 rounded-lg border border-gray-700 focus:border-vibo-purple outline-none resize-none h-14 custom-scrollbar transition-colors"
-           />
-           <button 
-             onClick={handleSend}
-             disabled={isLoading || !input.trim()}
-             className="absolute right-2 top-2 bottom-2 aspect-square flex items-center justify-center bg-vibo-purple text-white rounded hover:bg-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition"
-           >
-             <Send size={18} />
-           </button>
-        </div>
-        <div className="text-[10px] text-gray-600 mt-2 text-center">
-          CONFIDENTIAL. AI GENERATED ADVICE. USE AT OWN RISK.
+          <input
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={handleKeyPress}
+            placeholder="Введи вопрос (например: Клиент молчит 2 дня)..."
+            className="w-full bg-gray-900 border border-gray-700 text-white rounded-xl py-3.5 pl-4 pr-12 focus:outline-none focus:border-vibo-green/50 focus:shadow-[0_0_20px_rgba(57,255,20,0.1)] transition-all placeholder:text-gray-600 text-sm"
+            disabled={isLoading}
+          />
+          <button
+            onClick={handleSend}
+            disabled={!input.trim() || isLoading}
+            className="absolute right-2 p-2 bg-vibo-green text-black rounded-lg hover:bg-green-400 hover:shadow-[0_0_15px_rgba(57,255,20,0.4)] disabled:opacity-50 disabled:shadow-none disabled:cursor-not-allowed transition-all transform active:scale-95"
+          >
+            <Send size={18} />
+          </button>
         </div>
       </div>
     </div>
