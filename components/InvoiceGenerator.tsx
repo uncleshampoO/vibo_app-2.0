@@ -7,7 +7,7 @@ import { InvoicePreviewModal } from './InvoicePreviewModal';
 // --- КОНФИГУРАЦИЯ N8N (PRODUCTION) ---
 const N8N_GET_PROFILES_URL = 'https://viboteam.app.n8n.cloud/webhook/get-profiles';
 const N8N_SAVE_PROFILE_URL = 'https://viboteam.app.n8n.cloud/webhook/save-profile';
-const STORAGE_KEY = 'vibo_profiles_cache_v5';
+const STORAGE_KEY = 'vibo_profiles_cache_v6';
 
 interface InvoiceGeneratorProps {}
 
