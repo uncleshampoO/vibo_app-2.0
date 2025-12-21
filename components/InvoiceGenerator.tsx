@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { SellerProfile, BuyerProfile, InvoiceItem } from '../types';
 import { Plus, Trash2, Printer, Briefcase, Building2, Loader2, Save } from 'lucide-react';
+// Убедись, что путь к utils правильный
 import { generateInvoiceHTML } from '../utils';
 
-// --- КОНФИГУРАЦИЯ N8N ---
-// Создай два сценария в n8n и вставь сюда ссылки на Production URL вебхуков
-const N8N_GET_PROFILES_URL = 'https://YOUR_N8N_DOMAIN/webhook/get-profiles'; 
-const N8N_SAVE_PROFILE_URL = 'https://YOUR_N8N_DOMAIN/webhook/save-profile';
+// --- КОНФИГУРАЦИЯ N8N (PRODUCTION) ---
+const N8N_GET_PROFILES_URL = 'https://viboteam.app.n8n.cloud/webhook/get-profiles'; 
+const N8N_SAVE_PROFILE_URL = 'https://viboteam.app.n8n.cloud/webhook/save-profile';
 
 interface InvoiceGeneratorProps {}
 
@@ -42,18 +42,14 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
       if (!userId) return;
       setIsLoading(true);
       try {
-        // Если вебхуки еще не настроены, не ломаем приложение, просто выводим лог
-        if (N8N_GET_PROFILES_URL.includes('YOUR_N8N_DOMAIN')) {
-            console.warn('Webhook URL не настроен. Используем пустой список.');
-            setIsLoading(false);
-            return;
-        }
-
         const response = await fetch(`${N8N_GET_PROFILES_URL}?user_id=${userId}`);
         if (response.ok) {
           const data = await response.json();
           // Ожидаем, что n8n вернет массив профилей [{ id:..., name:..., ... }]
-          setProfiles(data || []);
+          // Если профилей нет, n8n может вернуть пустой массив или ничего, обрабатываем это
+          setProfiles(Array.isArray(data) ? data : []);
+        } else {
+            console.error('Ошибка ответа сервера:', response.status);
         }
       } catch (error) {
         console.error('Ошибка загрузки профилей:', error);
@@ -70,11 +66,11 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     if (profiles.length > 0 && !activeProfileId) {
       setActiveProfileId(profiles[0].id);
     }
-    // Если загрузка прошла, профилей нет и мы не в режиме редактирования - открываем форму
+    // Если загрузка завершена, профилей нет и мы еще не редактируем — открываем форму создания
     if (!isLoading && profiles.length === 0 && !isEditingProfile) {
       setIsEditingProfile(true); 
     }
-  }, [profiles, activeProfileId, isLoading]);
+  }, [profiles, activeProfileId, isLoading, isEditingProfile]);
 
   // 3. СОХРАНЕНИЕ ПРОФИЛЯ (POST в n8n)
   const handleSaveProfile = async () => {
@@ -84,7 +80,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     const newId = tempProfile.id || Date.now().toString();
     const newProfile = { ...tempProfile, id: newId };
 
-    // Оптимистичное обновление UI (сразу показываем результат юзеру)
+    // Оптимистичное обновление UI (сразу показываем результат юзеру, не дожидаясь сервера)
     if (tempProfile.id) {
       setProfiles(prev => prev.map(p => p.id === tempProfile.id ? newProfile : p));
     } else {
@@ -93,21 +89,17 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     
     // Отправка в n8n
     try {
-        if (!N8N_SAVE_PROFILE_URL.includes('YOUR_N8N_DOMAIN')) {
-            await fetch(N8N_SAVE_PROFILE_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    user_id: userId, // ВАЖНО: Привязываем к юзеру
-                    profile: newProfile
-                })
-            });
-        } else {
-             console.warn('Webhook URL для сохранения не настроен');
-        }
+        await fetch(N8N_SAVE_PROFILE_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                user_id: userId, // ВАЖНО: Привязываем данные к конкретному пользователю
+                profile: newProfile
+            })
+        });
     } catch (e) {
         console.error("Ошибка сохранения в облако", e);
-        alert("Ошибка сохранения в облако, но локально данные обновлены.");
+        alert("Данные сохранены локально, но произошла ошибка при отправке в облако.");
     }
 
     setActiveProfileId(newProfile.id);
@@ -141,6 +133,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     window.open(url, '_blank');
   };
 
+  // Стили для инпутов (черный текст на белом фоне)
   const whiteInputClass = "w-full p-3 rounded bg-white text-black border border-gray-300 focus:border-vibo-purple focus:outline-none placeholder:text-gray-400";
 
   // --- ЭКРАН ЗАГРУЗКИ ---
@@ -202,6 +195,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
            <div className="bg-vibo-green/10 p-2 rounded text-vibo-green">
              <Briefcase size={20} />
            </div>
+           {/* Выпадающий список профилей */}
            <select 
              className="bg-black text-white p-2 rounded border border-gray-700 outline-none focus:border-vibo-green w-full md:w-64"
              value={activeProfileId}
