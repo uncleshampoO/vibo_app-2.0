@@ -1,19 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { SellerProfile, BuyerProfile, InvoiceItem } from '../types';
-import { Plus, Trash2, Printer, Briefcase, Building2 } from 'lucide-react';
-// Убедись, что generateInvoiceHTML существует в utils
+import { Plus, Trash2, Printer, Briefcase, Building2, Loader2, Save } from 'lucide-react';
 import { generateInvoiceHTML } from '../utils';
 
-interface InvoiceGeneratorProps {
-  // empty props
-}
+// --- КОНФИГУРАЦИЯ N8N ---
+// Создай два сценария в n8n и вставь сюда ссылки на Production URL вебхуков
+const N8N_GET_PROFILES_URL = 'https://YOUR_N8N_DOMAIN/webhook/get-profiles'; 
+const N8N_SAVE_PROFILE_URL = 'https://YOUR_N8N_DOMAIN/webhook/save-profile';
+
+interface InvoiceGeneratorProps {}
 
 const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
-  // --- ЛОГИКА (ОСТАВЛЯЕМ КАК БЫЛО) ---
-  const [profiles, setProfiles] = useState<SellerProfile[]>(() => {
-    const saved = localStorage.getItem('vibo_seller_profiles');
-    return saved ? JSON.parse(saved) : [];
-  });
+  // 1. ПОЛУЧАЕМ ID ПОЛЬЗОВАТЕЛЯ TELEGRAM
+  const tg = window.Telegram?.WebApp;
+  const userId = tg?.initDataUnsafe?.user?.id?.toString() || 'test-user-id'; // 'test-user-id' для отладки в браузере
+
+  // Состояния данных
+  const [profiles, setProfiles] = useState<SellerProfile[]>([]);
+  const [isLoading, setIsLoading] = useState(false); // Загрузка данных
+  const [isSaving, setIsSaving] = useState(false);   // Сохранение данных
+
   const [activeProfileId, setActiveProfileId] = useState<string>('');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
 
@@ -25,35 +31,88 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     { id: '1', name: 'Услуги по разработке ПО', quantity: 1, unit: 'шт', price: 0 }
   ]);
 
-  // Временный профиль для редактирования
+  // Временный профиль
   const [tempProfile, setTempProfile] = useState<SellerProfile>({
     id: '', name: '', inn: '', kpp: '', bankName: '', bik: '', accountNumber: '', corrAccount: '', address: ''
   });
 
+  // 2. ЗАГРУЗКА ПРОФИЛЕЙ ПРИ СТАРТЕ (GET из n8n)
   useEffect(() => {
-    localStorage.setItem('vibo_seller_profiles', JSON.stringify(profiles));
-  }, [profiles]);
+    const fetchProfiles = async () => {
+      if (!userId) return;
+      setIsLoading(true);
+      try {
+        // Если вебхуки еще не настроены, не ломаем приложение, просто выводим лог
+        if (N8N_GET_PROFILES_URL.includes('YOUR_N8N_DOMAIN')) {
+            console.warn('Webhook URL не настроен. Используем пустой список.');
+            setIsLoading(false);
+            return;
+        }
 
+        const response = await fetch(`${N8N_GET_PROFILES_URL}?user_id=${userId}`);
+        if (response.ok) {
+          const data = await response.json();
+          // Ожидаем, что n8n вернет массив профилей [{ id:..., name:..., ... }]
+          setProfiles(data || []);
+        }
+      } catch (error) {
+        console.error('Ошибка загрузки профилей:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchProfiles();
+  }, [userId]);
+
+  // Установка активного профиля после загрузки
   useEffect(() => {
     if (profiles.length > 0 && !activeProfileId) {
       setActiveProfileId(profiles[0].id);
     }
-    if (profiles.length === 0) {
+    // Если загрузка прошла, профилей нет и мы не в режиме редактирования - открываем форму
+    if (!isLoading && profiles.length === 0 && !isEditingProfile) {
       setIsEditingProfile(true); 
     }
-  }, [profiles, activeProfileId]);
+  }, [profiles, activeProfileId, isLoading]);
 
-  const handleSaveProfile = () => {
+  // 3. СОХРАНЕНИЕ ПРОФИЛЯ (POST в n8n)
+  const handleSaveProfile = async () => {
     if (!tempProfile.name) return;
-    const newProfile = { ...tempProfile, id: tempProfile.id || Date.now().toString() };
-    
+    setIsSaving(true);
+
+    const newId = tempProfile.id || Date.now().toString();
+    const newProfile = { ...tempProfile, id: newId };
+
+    // Оптимистичное обновление UI (сразу показываем результат юзеру)
     if (tempProfile.id) {
       setProfiles(prev => prev.map(p => p.id === tempProfile.id ? newProfile : p));
     } else {
       setProfiles(prev => [...prev, newProfile]);
     }
+    
+    // Отправка в n8n
+    try {
+        if (!N8N_SAVE_PROFILE_URL.includes('YOUR_N8N_DOMAIN')) {
+            await fetch(N8N_SAVE_PROFILE_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    user_id: userId, // ВАЖНО: Привязываем к юзеру
+                    profile: newProfile
+                })
+            });
+        } else {
+             console.warn('Webhook URL для сохранения не настроен');
+        }
+    } catch (e) {
+        console.error("Ошибка сохранения в облако", e);
+        alert("Ошибка сохранения в облако, но локально данные обновлены.");
+    }
+
     setActiveProfileId(newProfile.id);
     setIsEditingProfile(false);
+    setIsSaving(false);
     setTempProfile({ id: '', name: '', inn: '', kpp: '', bankName: '', bik: '', accountNumber: '', corrAccount: '', address: '' });
   };
 
@@ -82,10 +141,19 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     window.open(url, '_blank');
   };
 
-  // --- СТИЛИ ДЛЯ БЕЛЫХ ПОЛЕЙ (Black Text Fix) ---
   const whiteInputClass = "w-full p-3 rounded bg-white text-black border border-gray-300 focus:border-vibo-purple focus:outline-none placeholder:text-gray-400";
 
-  // --- РЕНДЕР: ЭКРАН РЕДАКТИРОВАНИЯ ПРОФИЛЯ ---
+  // --- ЭКРАН ЗАГРУЗКИ ---
+  if (isLoading) {
+      return (
+          <div className="flex flex-col items-center justify-center h-64 text-vibo-purple animate-pulse">
+              <Loader2 className="w-10 h-10 animate-spin mb-2" />
+              <p>Синхронизация профилей...</p>
+          </div>
+      )
+  }
+
+  // --- ЭКРАН РЕДАКТИРОВАНИЯ ---
   if (isEditingProfile || profiles.length === 0) {
     return (
       <div className="max-w-3xl mx-auto p-6 bg-vibo-darkgray border border-vibo-purple rounded-lg shadow-[0_0_15px_rgba(188,19,254,0.3)] animate-fade-in">
@@ -94,7 +162,6 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
           {tempProfile.id ? 'Редактировать Компанию' : 'Новая Компания'}
         </h2>
         
-        {/* 👇 ЗДЕСЬ ИСПРАВЛЕННЫЕ ПОЛЯ (Черный текст на белом) */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
            <input placeholder="Название ООО/ИП" className={whiteInputClass} value={tempProfile.name} onChange={e => setTempProfile({...tempProfile, name: e.target.value})} />
            <input placeholder="ИНН" className={whiteInputClass} value={tempProfile.inn} onChange={e => setTempProfile({...tempProfile, inn: e.target.value})} />
@@ -113,15 +180,20 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
           {profiles.length > 0 && (
             <button onClick={() => setIsEditingProfile(false)} className="px-6 py-2 rounded text-gray-400 hover:text-white transition hover:bg-white/5">Отмена</button>
           )}
-          <button onClick={handleSaveProfile} className="bg-vibo-purple hover:bg-purple-600 text-white font-bold py-2 px-6 rounded shadow-lg transition-all">
-            Сохранить Данные
+          <button 
+            onClick={handleSaveProfile} 
+            disabled={isSaving}
+            className="bg-vibo-purple hover:bg-purple-600 text-white font-bold py-2 px-6 rounded shadow-lg transition-all flex items-center gap-2 disabled:opacity-50"
+          >
+            {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />}
+            {isSaving ? 'Сохранение...' : 'Сохранить Данные'}
           </button>
         </div>
       </div>
     );
   }
 
-  // --- РЕНДЕР: ОСНОВНОЙ ЭКРАН ---
+  // --- ОСНОВНОЙ ЭКРАН ---
   return (
     <div className="space-y-8 animate-fade-in pb-20">
       {/* Выбор профиля */}
@@ -149,7 +221,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Левая колонка: Параметры */}
+        {/* Левая колонка */}
         <div className="lg:col-span-1 space-y-6">
           <div className="p-5 bg-gray-900/50 rounded-xl border border-gray-800">
             <h3 className="text-vibo-purple font-bold mb-4 uppercase text-xs tracking-wider">Параметры Счета</h3>
@@ -198,7 +270,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
                       />
                     </div>
                     <div className="col-span-2">
-                       <input 
+                        <input 
                         type="number"
                         className="bg-transparent text-center text-vibo-green w-full outline-none text-sm font-mono bg-green-900/10 rounded"
                         value={item.quantity}
@@ -206,7 +278,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
                       />
                     </div>
                     <div className="col-span-3">
-                       <input 
+                        <input 
                         type="number"
                         className="bg-transparent text-right text-white w-full outline-none font-mono text-sm"
                         value={item.price}
@@ -214,19 +286,19 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
                       />
                     </div>
                     <div className="col-span-1 text-right">
-                       <button onClick={() => removeItem(item.id)} className="text-gray-600 hover:text-red-500 transition p-1">
-                         <Trash2 size={14} />
-                       </button>
+                        <button onClick={() => removeItem(item.id)} className="text-gray-600 hover:text-red-500 transition p-1">
+                          <Trash2 size={14} />
+                        </button>
                     </div>
                   </div>
                 ))}
               </div>
 
               <div className="mt-8 pt-6 border-t border-gray-700 flex justify-between items-end">
-                 <div className="text-gray-500 text-xs uppercase tracking-widest">Итого к оплате</div>
-                 <div className="text-3xl font-mono text-vibo-green font-bold shadow-green-glow">
-                   {new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(items.reduce((acc, i) => acc + (i.price * i.quantity), 0))}
-                 </div>
+                  <div className="text-gray-500 text-xs uppercase tracking-widest">Итого к оплате</div>
+                  <div className="text-3xl font-mono text-vibo-green font-bold shadow-green-glow">
+                    {new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(items.reduce((acc, i) => acc + (i.price * i.quantity), 0))}
+                  </div>
               </div>
            </div>
            
