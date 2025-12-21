@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { SellerProfile, BuyerProfile, InvoiceItem } from '../types';
 import { Plus, Trash2, Printer, Briefcase, Building2, Loader2, Save, Eye, FileText, Sparkles } from 'lucide-react';
 import { generateInvoiceHTML } from '../utils';
-import { InvoicePreviewModal } from './InvoicePreviewModal'; // Импортируем модалку
+import { InvoicePreviewModal } from './InvoicePreviewModal'; 
 
 // --- КОНФИГУРАЦИЯ N8N (PRODUCTION) ---
 const N8N_GET_PROFILES_URL = 'https://viboteam.app.n8n.cloud/webhook/get-profiles'; 
@@ -31,7 +31,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     { id: '1', name: 'Услуги по разработке ПО', quantity: 1, unit: 'шт', price: 0 }
   ]);
   
-  // 🔥 НОВОЕ: Состояние стиля и превью
+  // 🔥 Состояние стиля и превью
   const [invoiceStyle, setInvoiceStyle] = useState<'cyber' | 'classic'>('cyber');
   const [showPreview, setShowPreview] = useState(false);
   const [previewHtml, setPreviewHtml] = useState('');
@@ -50,7 +50,13 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
         const response = await fetch(`${N8N_GET_PROFILES_URL}?user_id=${userId}`);
         if (response.ok) {
           const data = await response.json();
-          setProfiles(Array.isArray(data) ? data : []);
+          // Проверяем, что пришел массив. Если пришла ошибка или пустота - ставим пустой массив
+          if (Array.isArray(data)) {
+             setProfiles(data);
+          } else {
+             console.warn("Данные от n8n не являются массивом:", data);
+             setProfiles([]); 
+          }
         }
       } catch (error) {
         console.error('Ошибка загрузки:', error);
@@ -63,6 +69,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
 
   useEffect(() => {
     if (profiles.length > 0 && !activeProfileId) setActiveProfileId(profiles[0].id);
+    // Открываем редактор, если загрузка кончилась и профилей нет
     if (!isLoading && profiles.length === 0 && !isEditingProfile) setIsEditingProfile(true); 
   }, [profiles, activeProfileId, isLoading, isEditingProfile]);
 
@@ -87,6 +94,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
         });
     } catch (e) {
         console.error("Cloud save error", e);
+        alert("Ошибка сети. Данные сохранены только локально.");
     }
     setActiveProfileId(newProfile.id);
     setIsEditingProfile(false);
@@ -100,10 +108,11 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
   const removeItem = (id: string) => setItems(items.filter(i => i.id !== id));
   const updateItem = (id: string, field: keyof InvoiceItem, value: any) => setItems(items.map(i => i.id === id ? { ...i, [field]: value } : i));
 
-  // 🔥 ОБНОВЛЕННАЯ ГЕНЕРАЦИЯ (Вместо window.open открываем модалку)
+  // 🔥 ОБНОВЛЕННАЯ ГЕНЕРАЦИЯ
   const handlePreview = () => {
     if (!activeProfile) {
-      alert("Сначала создайте профиль компании!");
+      // Более понятное сообщение пользователю
+      alert("Ошибка: Профиль компании не найден. Пожалуйста, заполните реквизиты и нажмите 'Сохранить'.");
       return;
     }
     // Генерируем HTML с выбранным стилем
