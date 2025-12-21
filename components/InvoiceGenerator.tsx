@@ -7,7 +7,9 @@ import { InvoicePreviewModal } from './InvoicePreviewModal';
 // --- КОНФИГУРАЦИЯ N8N (PRODUCTION) ---
 const N8N_GET_PROFILES_URL = 'https://viboteam.app.n8n.cloud/webhook/get-profiles';
 const N8N_SAVE_PROFILE_URL = 'https://viboteam.app.n8n.cloud/webhook/save-profile';
-const STORAGE_KEY = 'vibo_profiles_cache_v6';
+
+// 🔥 v7 - НОВАЯ ВЕРСИЯ КЭША ДЛЯ СБРОСА СТАРЫХ ДАННЫХ
+const STORAGE_KEY = 'vibo_profiles_cache_v7';
 
 interface InvoiceGeneratorProps {}
 
@@ -16,7 +18,7 @@ const Toast = ({ message, type, onClose }: { message: string, type: 'success' | 
   <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-[100] flex items-center gap-3 px-4 py-3 rounded-lg shadow-2xl animate-fade-in ${type === 'success' ? 'bg-green-900/90 text-white border border-green-500' : 'bg-red-900/90 text-white border border-red-500'}`}>
     {type === 'success' ? <CheckCircle size={20} className="text-green-400" /> : <AlertCircle size={20} className="text-red-400" />}
     <span className="font-medium text-sm">{message}</span>
-    <button onClick={onClose}><X size={16} className="opacity-50 hover:opacity-100" /></button>
+    <button onClick={onClose} className="opacity-50 hover:opacity-100"><X size={16} /></button>
   </div>
 );
 
@@ -26,10 +28,8 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     const tg = window.Telegram?.WebApp;
     const telegramId = tg?.initDataUnsafe?.user?.id?.toString();
 
-    // Если открыто в Telegram - используем реальный ID
     if (telegramId) return telegramId;
 
-    // Если открыто в браузере - генерируем уникальный ID для этого браузера
     const localDebugId = localStorage.getItem('vibo_debug_id');
     if (localDebugId) return localDebugId;
 
@@ -67,7 +67,6 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     id: '', name: '', inn: '', kpp: '', bankName: '', bik: '', accountNumber: '', corrAccount: '', address: ''
   });
 
-  // Хелпер для уведомлений
   const showToast = (msg: string, type: 'success' | 'error') => {
     setNotification({ msg, type });
     setTimeout(() => setNotification(null), 3000);
@@ -78,7 +77,6 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     const syncProfiles = async () => {
       if (!userId) return;
       
-      // Показываем лоадер только если локально совсем пусто
       if (profiles.length === 0) setIsLoading(true);
 
       try {
@@ -86,6 +84,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
         const response = await fetch(`${N8N_GET_PROFILES_URL}?user_id=${userId}`);
         if (response.ok) {
           const data = await response.json();
+          // Если пришли данные (массив) и он не пустой
           if (Array.isArray(data) && data.length > 0) {
              setProfiles(data);
              localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
@@ -93,12 +92,12 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
              // Если активный не выбран - берем первый
              if (!activeProfileId) setActiveProfileId(data[0].id);
           } else {
-             // Если n8n вернул пустоту (новый юзер) -> идем в создание
+             // Если пришел пустой массив (новый юзер)
              if (profiles.length === 0) setIsEditingProfile(true);
           }
         }
       } catch (error) {
-        console.error('Ошибка синхронизации (работаем оффлайн):', error);
+        console.error('Ошибка синхронизации:', error);
       } finally {
         setIsLoading(false);
       }
@@ -116,16 +115,10 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     }
   }, [profiles, activeProfileId, isLoading]);
 
-  // 3. УМНЫЙ SELECT
+  // 3. ОБРАБОТЧИК ВЫБОРА КОМПАНИИ
   const handleProfileSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
-      const value = e.target.value;
-      if (value === 'ADD_NEW_PROFILE') {
-          setTempProfile({ id: '', name: '', inn: '', kpp: '', bankName: '', bik: '', accountNumber: '', corrAccount: '', address: '' });
-          setIsEditingProfile(true);
-      } else {
-          setActiveProfileId(value);
-          setIsEditingProfile(false);
-      }
+      setActiveProfileId(e.target.value);
+      setIsEditingProfile(false);
   };
 
   // 4. СОХРАНЕНИЕ
@@ -138,7 +131,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     const newId = tempProfile.id || Date.now().toString();
     const newProfile = { ...tempProfile, id: newId };
 
-    // 1. Обновляем локально (Мгновенно)
+    // 1. Обновляем локально
     let updatedProfiles;
     if (tempProfile.id) {
       updatedProfiles = profiles.map(p => p.id === tempProfile.id ? newProfile : p);
@@ -149,7 +142,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedProfiles));
     setActiveProfileId(newId);
 
-    // 2. Отправляем в облако (Фоном)
+    // 2. Отправляем в облако
     try {
         await fetch(N8N_SAVE_PROFILE_URL, {
             method: 'POST',
@@ -159,7 +152,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
         showToast("Профиль сохранен!", "success");
     } catch (e) {
         console.error("Cloud save failed:", e);
-        showToast("Сохранено на устройстве (нет сети)", "error");
+        showToast("Сохранено локально (нет сети)", "error");
     }
 
     setIsEditingProfile(false);
@@ -247,31 +240,49 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
       />
 
       {/* Верхняя панель: Выбор компании */}
-      <div className="bg-gray-900/50 p-4 rounded-xl border border-gray-800 backdrop-blur-sm flex flex-col md:flex-row gap-4 items-center justify-between">
-         <div className="flex items-center gap-3 w-full">
-            <div className="bg-vibo-green/10 p-2 rounded text-vibo-green"><Briefcase size={20} /></div>
-            
-            {/* ВЫПАДАЮЩИЙ СПИСОК С КНОПКОЙ "ДОБАВИТЬ" ВНУТРИ */}
-            <select 
-                className="bg-black text-white p-3 rounded border border-gray-700 outline-none focus:border-vibo-green w-full font-bold cursor-pointer hover:border-gray-500 transition appearance-none"
-                value={activeProfileId}
-                onChange={handleProfileSelect}
+      <div className="bg-gray-900/50 p-4 rounded-xl border border-gray-800 backdrop-blur-sm flex flex-col gap-4">
+         
+         {/* Заголовок и кнопка редактирования */}
+         <div className="flex justify-between items-center">
+            <span className="text-gray-400 text-xs uppercase tracking-widest font-bold">От кого (Продавец)</span>
+            <button 
+                onClick={() => { setTempProfile(activeProfile); setIsEditingProfile(true); }} 
+                className="text-xs text-vibo-purple hover:text-white underline"
+                disabled={profiles.length === 0}
             >
-                <optgroup label="Мои Компании">
-                    {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-                </optgroup>
-                <optgroup label="Действия">
-                    <option value="ADD_NEW_PROFILE">➕ Добавить новую компанию...</option>
-                </optgroup>
-            </select>
+                Изменить реквизиты
+            </button>
          </div>
 
-         <button 
-            onClick={() => { setTempProfile(activeProfile); setIsEditingProfile(true); }} 
-            className="text-sm text-gray-400 hover:text-white hover:underline decoration-vibo-purple whitespace-nowrap"
-         >
-            ✎ Изменить
-         </button>
+         <div className="flex gap-2">
+            <div className="flex-grow relative">
+                <div className="absolute left-3 top-1/2 -translate-y-1/2 text-vibo-green"><Briefcase size={18} /></div>
+                
+                <select 
+                    className="w-full bg-black text-white pl-10 pr-4 py-3 rounded-lg border border-gray-700 outline-none focus:border-vibo-green appearance-none font-bold"
+                    value={activeProfileId}
+                    onChange={handleProfileSelect}
+                >
+                    {profiles.length === 0 ? (
+                        <option>Нет компаний (создайте новую)</option>
+                    ) : (
+                        profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)
+                    )}
+                </select>
+            </div>
+
+            {/* ЯВНАЯ КНОПКА ДОБАВЛЕНИЯ СПРАВА */}
+            <button 
+                onClick={() => {
+                    setTempProfile({ id: '', name: '', inn: '', kpp: '', bankName: '', bik: '', accountNumber: '', corrAccount: '', address: '' });
+                    setIsEditingProfile(true);
+                }}
+                className="bg-vibo-green text-black p-3 rounded-lg hover:bg-green-400 transition flex items-center justify-center min-w-[50px] shadow-lg shadow-green-500/20"
+                title="Добавить компанию"
+            >
+                <Plus size={24} />
+            </button>
+         </div>
       </div>
 
       {/* Форма Счета */}
@@ -338,7 +349,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
       
       {/* Footer для понимания статуса */}
       <div className="text-center mt-10 text-[10px] text-gray-700 font-mono">
-         ID: {userId} • Vibo Team v2.5
+         ID: {userId} • Vibo Team v2.7
       </div>
     </div>
   );
