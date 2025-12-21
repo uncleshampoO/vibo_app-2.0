@@ -21,17 +21,15 @@ const Toast = ({ message, type, onClose }: { message: string, type: 'success' | 
 );
 
 const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
-  // 1. БЕЗОПАСНОЕ ОПРЕДЕЛЕНИЕ ID (ИСПРАВЛЕНО!)
+  // 1. БЕЗОПАСНОЕ ОПРЕДЕЛЕНИЕ ID
   const [userId] = useState(() => {
     const tg = window.Telegram?.WebApp;
     const telegramId = tg?.initDataUnsafe?.user?.id?.toString();
 
-    if (telegramId) {
-        return telegramId; // Если мы в Телеграм - используем ID юзера
-    }
+    // Если открыто в Telegram - используем реальный ID
+    if (telegramId) return telegramId;
 
-    // Если мы в браузере - генерируем УНИКАЛЬНЫЙ ID для этого браузера
-    // Чтобы ты и другие тестировщики не видели данные друг друга
+    // Если открыто в браузере - генерируем уникальный ID для этого браузера
     const localDebugId = localStorage.getItem('vibo_debug_id');
     if (localDebugId) return localDebugId;
 
@@ -108,7 +106,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     syncProfiles();
   }, [userId]);
 
-  // Логика маршрутизации (Создание vs Просмотр)
+  // Логика маршрутизации
   useEffect(() => {
     if (!isLoading && profiles.length === 0 && !isEditingProfile) {
         setIsEditingProfile(true);
@@ -118,7 +116,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     }
   }, [profiles, activeProfileId, isLoading]);
 
-  // 3. УМНЫЙ SELECT (Обработчик)
+  // 3. УМНЫЙ SELECT
   const handleProfileSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
       const value = e.target.value;
       if (value === 'ADD_NEW_PROFILE') {
@@ -253,13 +251,13 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
          <div className="flex items-center gap-3 w-full">
             <div className="bg-vibo-green/10 p-2 rounded text-vibo-green"><Briefcase size={20} /></div>
             
-            {/* 🔥 ВЫПАДАЮЩИЙ СПИСОК С КНОПКОЙ "ДОБАВИТЬ" ВНУТРИ */}
+            {/* ВЫПАДАЮЩИЙ СПИСОК С КНОПКОЙ "ДОБАВИТЬ" ВНУТРИ */}
             <select 
                 className="bg-black text-white p-3 rounded border border-gray-700 outline-none focus:border-vibo-green w-full font-bold cursor-pointer hover:border-gray-500 transition appearance-none"
                 value={activeProfileId}
                 onChange={handleProfileSelect}
             >
-                <optgroup label="Ваши Компании">
+                <optgroup label="Мои Компании">
                     {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </optgroup>
                 <optgroup label="Действия">
@@ -338,9 +336,9 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
         </div>
       </div>
       
-      {/* DEBUG ID - Внизу страницы для теста */}
-      <div className="text-center mt-10 text-[10px] text-gray-700 font-mono select-all pb-4">
-         User ID: {userId}
+      {/* Footer для понимания статуса */}
+      <div className="text-center mt-10 text-[10px] text-gray-700 font-mono">
+         ID: {userId} • Vibo Team v2.5
       </div>
     </div>
   );
