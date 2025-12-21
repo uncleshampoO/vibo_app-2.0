@@ -1,30 +1,50 @@
 import React, { useState, useEffect } from 'react';
 import { SellerProfile, BuyerProfile, InvoiceItem } from '../types';
-import { Plus, Trash2, Briefcase, Building2, Loader2, Save, Eye, Sparkles, FileText } from 'lucide-react';
+import { Plus, Trash2, Briefcase, Building2, Loader2, Save, Eye, Sparkles, FileText, CheckCircle, AlertCircle, X } from 'lucide-react';
 import { generateInvoiceHTML } from '../utils';
-import { InvoicePreviewModal } from './InvoicePreviewModal'; 
+import { InvoicePreviewModal } from './InvoicePreviewModal';
 
 // --- КОНФИГУРАЦИЯ N8N (PRODUCTION) ---
-const N8N_GET_PROFILES_URL = 'https://viboteam.app.n8n.cloud/webhook/get-profiles'; 
+const N8N_GET_PROFILES_URL = 'https://viboteam.app.n8n.cloud/webhook/get-profiles';
 const N8N_SAVE_PROFILE_URL = 'https://viboteam.app.n8n.cloud/webhook/save-profile';
-const STORAGE_KEY = 'vibo_profiles_cache_v1'; // Ключ для локального кэша
+const STORAGE_KEY = 'vibo_profiles_cache_v1';
 
 interface InvoiceGeneratorProps {}
 
+// --- КОМПОНЕНТ УВЕДОМЛЕНИЙ (TOAST) ---
+const Toast = ({ message, type, onClose }: { message: string, type: 'success' | 'error', onClose: () => void }) => (
+  <div className={`fixed top-4 left-1/2 transform -translate-x-1/2 z-[100] flex items-center gap-3 px-4 py-3 rounded-lg shadow-2xl animate-fade-in ${type === 'success' ? 'bg-green-900/90 text-white border border-green-500' : 'bg-red-900/90 text-white border border-red-500'}`}>
+    {type === 'success' ? <CheckCircle size={20} className="text-green-400" /> : <AlertCircle size={20} className="text-red-400" />}
+    <span className="font-medium text-sm">{message}</span>
+    <button onClick={onClose}><X size={16} className="opacity-50 hover:opacity-100" /></button>
+  </div>
+);
+
 const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
-  // 1. ПОЛУЧАЕМ ID ПОЛЬЗОВАТЕЛЯ TELEGRAM
+  // 1. ОПРЕДЕЛЕНИЕ USER ID
   const tg = window.Telegram?.WebApp;
-  const userId = tg?.initDataUnsafe?.user?.id?.toString() || 'test-user-id';
+  // Если мы не в Телеграме, генерируем случайный ID для браузера, чтобы тесты не пересекались
+  const [userId] = useState(() => {
+    const rawId = tg?.initDataUnsafe?.user?.id?.toString();
+    if (rawId) return rawId;
+    
+    // Фолбэк для браузера: сохраняем случайный ID, чтобы данные не терялись при рефреше, но были уникальны для браузера
+    const localDebugId = localStorage.getItem('vibo_debug_id');
+    if (localDebugId) return localDebugId;
+    const newDebugId = 'browser_' + Math.random().toString(36).substring(2, 9);
+    localStorage.setItem('vibo_debug_id', newDebugId);
+    return newDebugId;
+  });
 
   // Состояния
   const [profiles, setProfiles] = useState<SellerProfile[]>(() => {
-    // 🧠 SENIOR TOUCH: Сразу грузим из кэша при инициализации (Мгновенный старт)
     const cached = localStorage.getItem(STORAGE_KEY);
     return cached ? JSON.parse(cached) : [];
   });
   
-  const [isLoading, setIsLoading] = useState(false); // Не блокируем экран, если есть кэш
+  const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [notification, setNotification] = useState<{msg: string, type: 'success' | 'error'} | null>(null);
 
   const [activeProfileId, setActiveProfileId] = useState<string>('');
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -45,11 +65,16 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     id: '', name: '', inn: '', kpp: '', bankName: '', bik: '', accountNumber: '', corrAccount: '', address: ''
   });
 
-  // 2. СИНХРОНИЗАЦИЯ (В фоне обновляем данные из n8n)
+  // Хелпер для уведомлений
+  const showToast = (msg: string, type: 'success' | 'error') => {
+    setNotification({ msg, type });
+    setTimeout(() => setNotification(null), 3000); // Скрыть через 3 сек
+  };
+
+  // 2. СИНХРОНИЗАЦИЯ С ОБЛАКОМ
   useEffect(() => {
     const syncProfiles = async () => {
       if (!userId) return;
-      // Если кэша нет, показываем лоадер. Если есть - обновляем "тихо".
       if (profiles.length === 0) setIsLoading(true);
 
       try {
@@ -58,17 +83,15 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
           const data = await response.json();
           if (Array.isArray(data) && data.length > 0) {
              setProfiles(data);
-             localStorage.setItem(STORAGE_KEY, JSON.stringify(data)); // Обновляем кэш
-             
-             // Если активный профиль не выбран, выбираем первый
+             localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
              if (!activeProfileId) setActiveProfileId(data[0].id);
           } else {
-             // Если пришел пустой массив, но у нас есть локальные данные - не стираем их сразу (защита от сбоя)
+             // Если пусто - ок, но не затираем кэш сразу, если была ошибка сети
              if (profiles.length === 0) setIsEditingProfile(true);
           }
         }
       } catch (error) {
-        console.error('Ошибка синхронизации (используем кэш):', error);
+        console.error('Ошибка синхронизации:', error);
       } finally {
         setIsLoading(false);
       }
@@ -76,19 +99,17 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     syncProfiles();
   }, [userId]);
 
-  // Логика первого входа: если после загрузки всё еще пусто -> на экран создания
+  // Авто-выбор профиля при загрузке
   useEffect(() => {
     if (!isLoading && profiles.length === 0 && !isEditingProfile) {
         setIsEditingProfile(true);
     }
-    // Если профили есть, но ID не выбран -> выбираем первый
     if (profiles.length > 0 && !activeProfileId) {
         setActiveProfileId(profiles[0].id);
     }
   }, [profiles, activeProfileId, isLoading]);
 
-
-  // 3. УМНЫЙ ОБРАБОТЧИК ВЫБОРА
+  // 3. УМНЫЙ SELECT
   const handleProfileSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
       const value = e.target.value;
       if (value === 'ADD_NEW_PROFILE') {
@@ -100,17 +121,17 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
       }
   };
 
-  // 4. СОХРАНЕНИЕ (Hybrid: Cache + Cloud)
+  // 4. СОХРАНЕНИЕ
   const handleSaveProfile = async () => {
     if (!tempProfile.name) {
-        alert("Введите название компании!");
+        showToast("Введите название компании!", "error");
         return;
     }
     setIsSaving(true);
     const newId = tempProfile.id || Date.now().toString();
     const newProfile = { ...tempProfile, id: newId };
 
-    // 1. Мгновенное обновление UI и Кэша
+    // Update Local & Cache
     let updatedProfiles;
     if (tempProfile.id) {
       updatedProfiles = profiles.map(p => p.id === tempProfile.id ? newProfile : p);
@@ -118,19 +139,20 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
       updatedProfiles = [...profiles, newProfile];
     }
     setProfiles(updatedProfiles);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedProfiles)); // 💾 Save to Cache
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedProfiles));
     setActiveProfileId(newId);
 
-    // 2. Отправка в облако (Асинхронно)
+    // Update Cloud
     try {
         await fetch(N8N_SAVE_PROFILE_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ user_id: userId, profile: newProfile })
         });
+        showToast("Профиль успешно сохранен", "success");
     } catch (e) {
-        console.error("Cloud save failed (saved locally):", e);
-        // Не пугаем юзера алертом, данные уже сохранены локально
+        console.error("Cloud save failed:", e);
+        showToast("Сохранено локально (ошибка сети)", "error");
     }
 
     setIsEditingProfile(false);
@@ -144,9 +166,12 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
   const removeItem = (id: string) => setItems(items.filter(i => i.id !== id));
   const updateItem = (id: string, field: keyof InvoiceItem, value: any) => setItems(items.map(i => i.id === id ? { ...i, [field]: value } : i));
 
-  // ПРЕВЬЮ
   const handlePreview = () => {
-    if (!activeProfile) return;
+    if (!activeProfile) {
+      showToast("Сначала выберите или создайте компанию", "error");
+      setIsEditingProfile(true);
+      return;
+    }
     const html = generateInvoiceHTML(activeProfile, buyer, items, invoiceNumber, date, invoiceStyle);
     setPreviewHtml(html);
     setShowPreview(true);
@@ -154,25 +179,28 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
 
   const whiteInputClass = "w-full p-3 rounded bg-white text-black border border-gray-300 focus:border-vibo-purple focus:outline-none placeholder:text-gray-400";
 
-  // --- ЭКРАН 0: ЗАГРУЗКА (Только если нет кэша) ---
+  // --- ЭКРАН 0: ПЕРВАЯ ЗАГРУЗКА ---
   if (isLoading && profiles.length === 0) {
       return (
           <div className="flex flex-col items-center justify-center h-screen text-vibo-purple animate-pulse">
               <Loader2 className="w-12 h-12 animate-spin mb-4" />
-              <p className="text-white">Первая настройка...</p>
+              <p className="text-white">Загрузка данных...</p>
           </div>
       )
   }
 
-  // --- ЭКРАН 1: РЕДАКТИРОВАНИЕ ---
+  // --- ЭКРАН 1: РЕДАКТОР ---
   if (isEditingProfile) {
     return (
       <div className="max-w-3xl mx-auto p-6 bg-vibo-darkgray border border-vibo-purple rounded-lg animate-fade-in min-h-screen">
+        {notification && <Toast message={notification.msg} type={notification.type} onClose={() => setNotification(null)} />}
+        
         <h2 className="text-2xl font-bold text-white mb-6 uppercase tracking-widest flex items-center gap-2 border-b border-gray-700 pb-4">
-          <Building2 className="text-vibo-purple" /> {tempProfile.id ? 'Редактировать Компанию' : 'Добавить Компанию'}
+          <Building2 className="text-vibo-purple" /> {tempProfile.id ? 'Редактировать Компанию' : 'Новая Компания'}
         </h2>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-           <input placeholder="Название ООО/ИП" className={whiteInputClass} value={tempProfile.name} onChange={e => setTempProfile({...tempProfile, name: e.target.value})} />
+           {/* Добавили required border для обязательного поля */}
+           <input placeholder="Название ООО/ИП *" className={`${whiteInputClass} ${!tempProfile.name ? 'border-l-4 border-l-red-500' : ''}`} value={tempProfile.name} onChange={e => setTempProfile({...tempProfile, name: e.target.value})} />
            <input placeholder="ИНН" className={whiteInputClass} value={tempProfile.inn} onChange={e => setTempProfile({...tempProfile, inn: e.target.value})} />
            <input placeholder="КПП" className={whiteInputClass} value={tempProfile.kpp} onChange={e => setTempProfile({...tempProfile, kpp: e.target.value})} />
            <input placeholder="Название Банка" className={whiteInputClass} value={tempProfile.bankName} onChange={e => setTempProfile({...tempProfile, bankName: e.target.value})} />
@@ -188,8 +216,8 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
           {profiles.length > 0 && (
               <button onClick={() => setIsEditingProfile(false)} className="px-6 py-2 rounded text-gray-400 hover:text-white">Отмена</button>
           )}
-          <button onClick={handleSaveProfile} disabled={isSaving} className="bg-vibo-purple hover:bg-purple-600 text-white font-bold py-2 px-6 rounded flex items-center gap-2 disabled:opacity-50">
-            {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} {isSaving ? 'Сохранение...' : 'Сохранить и Продолжить'}
+          <button onClick={handleSaveProfile} disabled={isSaving} className="bg-vibo-purple hover:bg-purple-600 text-white font-bold py-2 px-6 rounded flex items-center gap-2 disabled:opacity-50 shadow-lg shadow-purple-900/20">
+            {isSaving ? <Loader2 className="animate-spin" size={18} /> : <Save size={18} />} {isSaving ? 'Сохранение...' : 'Сохранить'}
           </button>
         </div>
       </div>
@@ -198,7 +226,9 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
 
   // --- ЭКРАН 2: ГЕНЕРАТОР (ОСНОВНОЙ) ---
   return (
-    <div className="space-y-8 animate-fade-in pb-20">
+    <div className="space-y-8 animate-fade-in pb-20 relative">
+      {notification && <Toast message={notification.msg} type={notification.type} onClose={() => setNotification(null)} />}
+      
       <InvoicePreviewModal 
         isOpen={showPreview} 
         onClose={() => setShowPreview(false)} 
@@ -211,9 +241,8 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
          <div className="flex items-center gap-3 w-full">
             <div className="bg-vibo-green/10 p-2 rounded text-vibo-green"><Briefcase size={20} /></div>
             
-            {/* 🔥 УМНЫЙ SELECT */}
             <select 
-                className="bg-black text-white p-3 rounded border border-gray-700 outline-none focus:border-vibo-green w-full font-bold cursor-pointer hover:border-gray-500 transition"
+                className="bg-black text-white p-3 rounded border border-gray-700 outline-none focus:border-vibo-green w-full font-bold cursor-pointer hover:border-gray-500 transition appearance-none"
                 value={activeProfileId}
                 onChange={handleProfileSelect}
             >
@@ -234,6 +263,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
          </button>
       </div>
 
+      {/* Основная сетка */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-6">
           <div className="p-5 bg-gray-900/50 rounded-xl border border-gray-800">
@@ -285,15 +315,19 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
               </div>
            </div>
            
-           {/* Кнопка Просмотреть теперь неактивна (серая), если нет профиля */}
            <button 
              onClick={handlePreview} 
              disabled={!activeProfile}
-             className={`w-full py-4 font-bold uppercase tracking-widest rounded-xl shadow-xl transition duration-300 flex justify-center items-center gap-3 active:scale-95 ${!activeProfile ? 'bg-gray-700 text-gray-500 cursor-not-allowed' : 'bg-white text-black hover:bg-gray-200'}`}
+             className={`w-full py-4 font-bold uppercase tracking-widest rounded-xl shadow-xl transition duration-300 flex justify-center items-center gap-3 active:scale-95 ${!activeProfile ? 'bg-gray-800 text-gray-500 cursor-not-allowed border border-gray-700' : 'bg-white text-black hover:bg-gray-200'}`}
            >
              <Eye size={20} /> Просмотреть и Отправить
            </button>
         </div>
+      </div>
+
+      {/* DEBUG FOOTER: ПОКАЗЫВАЕТ КТО ТЫ ЕСТЬ */}
+      <div className="text-center mt-10 text-[10px] text-gray-700 font-mono select-all">
+         ID: {userId} • Vibo Team v2.2
       </div>
     </div>
   );
