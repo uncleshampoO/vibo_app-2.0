@@ -21,16 +21,20 @@ const Toast = ({ message, type, onClose }: { message: string, type: 'success' | 
 );
 
 const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
-  // 1. ОПРЕДЕЛЕНИЕ USER ID
-  const tg = window.Telegram?.WebApp;
-  // Если мы не в Телеграме, генерируем случайный ID для браузера, чтобы тесты не пересекались
+  // 1. БЕЗОПАСНОЕ ОПРЕДЕЛЕНИЕ ID (ИСПРАВЛЕНО!)
   const [userId] = useState(() => {
-    const rawId = tg?.initDataUnsafe?.user?.id?.toString();
-    if (rawId) return rawId;
-    
-    // Фолбэк для браузера: сохраняем случайный ID, чтобы данные не терялись при рефреше, но были уникальны для браузера
+    const tg = window.Telegram?.WebApp;
+    const telegramId = tg?.initDataUnsafe?.user?.id?.toString();
+
+    if (telegramId) {
+        return telegramId; // Если мы в Телеграм - используем ID юзера
+    }
+
+    // Если мы в браузере - генерируем УНИКАЛЬНЫЙ ID для этого браузера
+    // Чтобы ты и другие тестировщики не видели данные друг друга
     const localDebugId = localStorage.getItem('vibo_debug_id');
     if (localDebugId) return localDebugId;
+
     const newDebugId = 'browser_' + Math.random().toString(36).substring(2, 9);
     localStorage.setItem('vibo_debug_id', newDebugId);
     return newDebugId;
@@ -68,30 +72,35 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
   // Хелпер для уведомлений
   const showToast = (msg: string, type: 'success' | 'error') => {
     setNotification({ msg, type });
-    setTimeout(() => setNotification(null), 3000); // Скрыть через 3 сек
+    setTimeout(() => setNotification(null), 3000);
   };
 
   // 2. СИНХРОНИЗАЦИЯ С ОБЛАКОМ
   useEffect(() => {
     const syncProfiles = async () => {
       if (!userId) return;
+      
+      // Показываем лоадер только если локально совсем пусто
       if (profiles.length === 0) setIsLoading(true);
 
       try {
+        console.log("Загрузка данных для ID:", userId);
         const response = await fetch(`${N8N_GET_PROFILES_URL}?user_id=${userId}`);
         if (response.ok) {
           const data = await response.json();
           if (Array.isArray(data) && data.length > 0) {
              setProfiles(data);
              localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+             
+             // Если активный не выбран - берем первый
              if (!activeProfileId) setActiveProfileId(data[0].id);
           } else {
-             // Если пусто - ок, но не затираем кэш сразу, если была ошибка сети
+             // Если n8n вернул пустоту (новый юзер) -> идем в создание
              if (profiles.length === 0) setIsEditingProfile(true);
           }
         }
       } catch (error) {
-        console.error('Ошибка синхронизации:', error);
+        console.error('Ошибка синхронизации (работаем оффлайн):', error);
       } finally {
         setIsLoading(false);
       }
@@ -99,7 +108,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     syncProfiles();
   }, [userId]);
 
-  // Авто-выбор профиля при загрузке
+  // Логика маршрутизации (Создание vs Просмотр)
   useEffect(() => {
     if (!isLoading && profiles.length === 0 && !isEditingProfile) {
         setIsEditingProfile(true);
@@ -109,7 +118,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     }
   }, [profiles, activeProfileId, isLoading]);
 
-  // 3. УМНЫЙ SELECT
+  // 3. УМНЫЙ SELECT (Обработчик)
   const handleProfileSelect = (e: React.ChangeEvent<HTMLSelectElement>) => {
       const value = e.target.value;
       if (value === 'ADD_NEW_PROFILE') {
@@ -131,7 +140,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     const newId = tempProfile.id || Date.now().toString();
     const newProfile = { ...tempProfile, id: newId };
 
-    // Update Local & Cache
+    // 1. Обновляем локально (Мгновенно)
     let updatedProfiles;
     if (tempProfile.id) {
       updatedProfiles = profiles.map(p => p.id === tempProfile.id ? newProfile : p);
@@ -142,17 +151,17 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(updatedProfiles));
     setActiveProfileId(newId);
 
-    // Update Cloud
+    // 2. Отправляем в облако (Фоном)
     try {
         await fetch(N8N_SAVE_PROFILE_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ user_id: userId, profile: newProfile })
         });
-        showToast("Профиль успешно сохранен", "success");
+        showToast("Профиль сохранен!", "success");
     } catch (e) {
         console.error("Cloud save failed:", e);
-        showToast("Сохранено локально (ошибка сети)", "error");
+        showToast("Сохранено на устройстве (нет сети)", "error");
     }
 
     setIsEditingProfile(false);
@@ -168,7 +177,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
 
   const handlePreview = () => {
     if (!activeProfile) {
-      showToast("Сначала выберите или создайте компанию", "error");
+      showToast("Сначала создайте компанию", "error");
       setIsEditingProfile(true);
       return;
     }
@@ -179,12 +188,13 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
 
   const whiteInputClass = "w-full p-3 rounded bg-white text-black border border-gray-300 focus:border-vibo-purple focus:outline-none placeholder:text-gray-400";
 
-  // --- ЭКРАН 0: ПЕРВАЯ ЗАГРУЗКА ---
+  // --- ЭКРАН 0: ЗАГРУЗКА ---
   if (isLoading && profiles.length === 0) {
       return (
           <div className="flex flex-col items-center justify-center h-screen text-vibo-purple animate-pulse">
               <Loader2 className="w-12 h-12 animate-spin mb-4" />
-              <p className="text-white">Загрузка данных...</p>
+              <p className="text-white">Загрузка профиля...</p>
+              <p className="text-[10px] text-gray-600 mt-2">ID: {userId}</p>
           </div>
       )
   }
@@ -196,10 +206,11 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
         {notification && <Toast message={notification.msg} type={notification.type} onClose={() => setNotification(null)} />}
         
         <h2 className="text-2xl font-bold text-white mb-6 uppercase tracking-widest flex items-center gap-2 border-b border-gray-700 pb-4">
-          <Building2 className="text-vibo-purple" /> {tempProfile.id ? 'Редактировать Компанию' : 'Новая Компания'}
+          <Building2 className="text-vibo-purple" /> {tempProfile.id ? 'Редактировать' : 'Новая Компания'}
         </h2>
+        
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-           {/* Добавили required border для обязательного поля */}
+           {/* Подсветка обязательного поля */}
            <input placeholder="Название ООО/ИП *" className={`${whiteInputClass} ${!tempProfile.name ? 'border-l-4 border-l-red-500' : ''}`} value={tempProfile.name} onChange={e => setTempProfile({...tempProfile, name: e.target.value})} />
            <input placeholder="ИНН" className={whiteInputClass} value={tempProfile.inn} onChange={e => setTempProfile({...tempProfile, inn: e.target.value})} />
            <input placeholder="КПП" className={whiteInputClass} value={tempProfile.kpp} onChange={e => setTempProfile({...tempProfile, kpp: e.target.value})} />
@@ -212,6 +223,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
            <input placeholder="ФИО Директора" className={whiteInputClass} value={tempProfile.director || ''} onChange={e => setTempProfile({...tempProfile, director: e.target.value})} />
            <input placeholder="ФИО Бухгалтера" className={whiteInputClass} value={tempProfile.accountant || ''} onChange={e => setTempProfile({...tempProfile, accountant: e.target.value})} />
         </div>
+
         <div className="flex justify-end gap-4 mt-8 pt-4 border-t border-gray-700">
           {profiles.length > 0 && (
               <button onClick={() => setIsEditingProfile(false)} className="px-6 py-2 rounded text-gray-400 hover:text-white">Отмена</button>
@@ -224,7 +236,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
     );
   }
 
-  // --- ЭКРАН 2: ГЕНЕРАТОР (ОСНОВНОЙ) ---
+  // --- ЭКРАН 2: ГЕНЕРАТОР ---
   return (
     <div className="space-y-8 animate-fade-in pb-20 relative">
       {notification && <Toast message={notification.msg} type={notification.type} onClose={() => setNotification(null)} />}
@@ -236,17 +248,18 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
         fileName={`Invoice-${invoiceNumber}`}
       />
 
-      {/* Верхняя панель */}
+      {/* Верхняя панель: Выбор компании */}
       <div className="bg-gray-900/50 p-4 rounded-xl border border-gray-800 backdrop-blur-sm flex flex-col md:flex-row gap-4 items-center justify-between">
          <div className="flex items-center gap-3 w-full">
             <div className="bg-vibo-green/10 p-2 rounded text-vibo-green"><Briefcase size={20} /></div>
             
+            {/* 🔥 ВЫПАДАЮЩИЙ СПИСОК С КНОПКОЙ "ДОБАВИТЬ" ВНУТРИ */}
             <select 
                 className="bg-black text-white p-3 rounded border border-gray-700 outline-none focus:border-vibo-green w-full font-bold cursor-pointer hover:border-gray-500 transition appearance-none"
                 value={activeProfileId}
                 onChange={handleProfileSelect}
             >
-                <optgroup label="Мои Компании">
+                <optgroup label="Ваши Компании">
                     {profiles.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                 </optgroup>
                 <optgroup label="Действия">
@@ -259,35 +272,35 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
             onClick={() => { setTempProfile(activeProfile); setIsEditingProfile(true); }} 
             className="text-sm text-gray-400 hover:text-white hover:underline decoration-vibo-purple whitespace-nowrap"
          >
-            ✎ Редактировать
+            ✎ Изменить
          </button>
       </div>
 
-      {/* Основная сетка */}
+      {/* Форма Счета */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <div className="lg:col-span-1 space-y-6">
           <div className="p-5 bg-gray-900/50 rounded-xl border border-gray-800">
-            <h3 className="text-vibo-purple font-bold mb-4 uppercase text-xs tracking-wider">Параметры Счета</h3>
+            <h3 className="text-vibo-purple font-bold mb-4 uppercase text-xs tracking-wider">Параметры</h3>
             <div className="grid grid-cols-2 gap-3">
               <div><label className="text-[10px] text-gray-500 uppercase ml-1">№ Счета</label><input type="text" value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)} className="w-full bg-black border border-gray-700 rounded p-2 text-white focus:border-vibo-purple outline-none" /></div>
               <div><label className="text-[10px] text-gray-500 uppercase ml-1">Дата</label><input type="text" value={date} onChange={e => setDate(e.target.value)} className="w-full bg-black border border-gray-700 rounded p-2 text-white focus:border-vibo-purple outline-none" /></div>
             </div>
             
             <div className="mt-6 pt-4 border-t border-gray-700">
-               <label className="text-[10px] text-gray-500 uppercase mb-2 block">Стиль Документа</label>
+               <label className="text-[10px] text-gray-500 uppercase mb-2 block">Дизайн</label>
                <div className="grid grid-cols-2 gap-2">
-                 <button onClick={() => setInvoiceStyle('cyber')} className={`flex items-center justify-center gap-2 p-2 rounded text-xs font-bold transition-all ${invoiceStyle === 'cyber' ? 'bg-vibo-purple text-white shadow-[0_0_10px_rgba(188,19,254,0.4)]' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}><Sparkles size={14} /> Vibo Cyber</button>
-                 <button onClick={() => setInvoiceStyle('classic')} className={`flex items-center justify-center gap-2 p-2 rounded text-xs font-bold transition-all ${invoiceStyle === 'classic' ? 'bg-white text-black shadow-lg' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}><FileText size={14} /> Классика</button>
+                 <button onClick={() => setInvoiceStyle('cyber')} className={`flex items-center justify-center gap-2 p-2 rounded text-xs font-bold transition-all ${invoiceStyle === 'cyber' ? 'bg-vibo-purple text-white shadow-[0_0_10px_rgba(188,19,254,0.4)]' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}><Sparkles size={14} /> Cyber</button>
+                 <button onClick={() => setInvoiceStyle('classic')} className={`flex items-center justify-center gap-2 p-2 rounded text-xs font-bold transition-all ${invoiceStyle === 'classic' ? 'bg-white text-black shadow-lg' : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}`}><FileText size={14} /> Print</button>
                </div>
             </div>
           </div>
 
           <div className="p-5 bg-gray-900/50 rounded-xl border border-gray-800">
-            <h3 className="text-vibo-green font-bold mb-4 uppercase text-xs tracking-wider">Покупатель (Клиент)</h3>
+            <h3 className="text-vibo-green font-bold mb-4 uppercase text-xs tracking-wider">Клиент</h3>
             <div className="space-y-3">
               <input type="text" placeholder="Название Клиента" value={buyer.name} onChange={e => setBuyer({...buyer, name: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white placeholder-gray-600 focus:border-vibo-green outline-none" />
               <input type="text" placeholder="ИНН" value={buyer.inn} onChange={e => setBuyer({...buyer, inn: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white placeholder-gray-600 focus:border-vibo-green outline-none" />
-              <textarea placeholder="Адрес покупателя" value={buyer.address} onChange={e => setBuyer({...buyer, address: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white placeholder-gray-600 focus:border-vibo-green outline-none h-20 resize-none" />
+              <textarea placeholder="Адрес" value={buyer.address} onChange={e => setBuyer({...buyer, address: e.target.value})} className="w-full bg-black border border-gray-700 rounded p-2 text-white placeholder-gray-600 focus:border-vibo-green outline-none h-20 resize-none" />
             </div>
           </div>
         </div>
@@ -295,14 +308,14 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
         <div className="lg:col-span-2 space-y-4">
            <div className="bg-gray-900/50 p-5 rounded-xl border border-gray-800 min-h-[400px] flex flex-col">
               <div className="flex justify-between items-center mb-6">
-                <h3 className="text-white font-bold uppercase text-sm tracking-wider">Позиции в счете</h3>
+                <h3 className="text-white font-bold uppercase text-sm tracking-wider">Позиции</h3>
                 <button onClick={addItem} className="flex items-center text-xs bg-vibo-purple/20 text-vibo-purple border border-vibo-purple/50 px-3 py-1.5 rounded-full hover:bg-vibo-purple hover:text-white transition-all"><Plus size={14} className="mr-1"/> Добавить</button>
               </div>
               <div className="space-y-3 flex-grow">
                 {items.map((item, idx) => (
                   <div key={item.id} className="grid grid-cols-12 gap-2 items-center bg-black p-3 rounded-lg border border-gray-800 hover:border-gray-600 transition group">
                     <div className="col-span-1 text-gray-500 text-xs text-center font-mono bg-gray-900 rounded py-1">{idx + 1}</div>
-                    <div className="col-span-5"><input className="bg-transparent text-white w-full outline-none placeholder-gray-700 text-sm" placeholder="Название" value={item.name} onChange={(e) => updateItem(item.id, 'name', e.target.value)} /></div>
+                    <div className="col-span-5"><input className="bg-transparent text-white w-full outline-none placeholder-gray-700 text-sm" placeholder="Услуга/Товар" value={item.name} onChange={(e) => updateItem(item.id, 'name', e.target.value)} /></div>
                     <div className="col-span-2"><input type="number" className="bg-transparent text-center text-vibo-green w-full outline-none text-sm font-mono bg-green-900/10 rounded" value={item.quantity} onChange={(e) => updateItem(item.id, 'quantity', Number(e.target.value))} /></div>
                     <div className="col-span-3"><input type="number" className="bg-transparent text-right text-white w-full outline-none font-mono text-sm" value={item.price} onChange={(e) => updateItem(item.id, 'price', Number(e.target.value))} /></div>
                     <div className="col-span-1 text-right"><button onClick={() => removeItem(item.id)} className="text-gray-600 hover:text-red-500 transition p-1"><Trash2 size={14} /></button></div>
@@ -310,7 +323,7 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
                 ))}
               </div>
               <div className="mt-8 pt-6 border-t border-gray-700 flex justify-between items-end">
-                  <div className="text-gray-500 text-xs uppercase tracking-widest">Итого к оплате</div>
+                  <div className="text-gray-500 text-xs uppercase tracking-widest">Итого</div>
                   <div className="text-3xl font-mono text-vibo-green font-bold shadow-green-glow">{new Intl.NumberFormat('ru-RU', { style: 'currency', currency: 'RUB' }).format(items.reduce((acc, i) => acc + (i.price * i.quantity), 0))}</div>
               </div>
            </div>
@@ -324,10 +337,10 @@ const InvoiceGenerator: React.FC<InvoiceGeneratorProps> = () => {
            </button>
         </div>
       </div>
-
-      {/* DEBUG FOOTER: ПОКАЗЫВАЕТ КТО ТЫ ЕСТЬ */}
-      <div className="text-center mt-10 text-[10px] text-gray-700 font-mono select-all">
-         ID: {userId} • Vibo Team v2.2
+      
+      {/* DEBUG ID - Внизу страницы для теста */}
+      <div className="text-center mt-10 text-[10px] text-gray-700 font-mono select-all pb-4">
+         User ID: {userId}
       </div>
     </div>
   );
