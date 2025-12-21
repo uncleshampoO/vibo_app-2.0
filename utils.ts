@@ -51,7 +51,7 @@ export const numberToRussianWords = (num: number): string => {
 
   // Thousands
   const thousands = Math.floor(remainderAfterMillions / 1000);
-  const remainderAfterThousands = remainderAfterMillions % 1000;
+  const remainderAfterThousands = remainderAfterThousands % 1000;
   if (thousands > 0) {
     result += getTriad(thousands, 'female') + ' ' + declension(thousands, ['тысяча', 'тысячи', 'тысяч']) + ' ';
   }
@@ -78,15 +78,53 @@ export const formatCurrency = (val: number) => {
   }).format(val);
 };
 
+// --- СТИЛИ ДЛЯ СЧЕТОВ ---
+
+const CSS_CYBER = `
+  body { font-family: 'Arial', sans-serif; background-color: #0a0a0a; color: #ffffff; padding: 20px; margin: 0; }
+  .container { max-width: 800px; margin: 0 auto; border: 1px solid #333; padding: 20px; box-shadow: 0 0 20px rgba(188, 19, 254, 0.1); }
+  .header-line { border-bottom: 2px solid #bc13fe; padding-bottom: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+  h1 { color: #bc13fe; font-size: 24px; text-transform: uppercase; letter-spacing: 2px; }
+  .neon-text { color: #39ff14; text-shadow: 0 0 5px rgba(57, 255, 20, 0.5); }
+  table { width: 100%; border-collapse: collapse; margin: 20px 0; }
+  th, td { border: 1px solid #333; padding: 10px; text-align: left; }
+  th { background-color: #1a1a1a; color: #bc13fe; }
+  .total-amount { font-size: 18px; font-weight: bold; color: #39ff14; }
+  .logo { max-height: 60px; filter: drop-shadow(0 0 5px #bc13fe); }
+  .legal-info { font-size: 12px; color: #888; margin-bottom: 20px; }
+`;
+
+const CSS_CLASSIC = `
+  body { font-family: 'Times New Roman', serif; background-color: #ffffff; color: #000000; padding: 20px; margin: 0; }
+  .container { max-width: 800px; margin: 0 auto; padding: 20px; }
+  .header-line { border-bottom: 2px solid #000; padding-bottom: 10px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; }
+  h1 { color: #000; font-size: 20px; font-weight: bold; margin-bottom: 5px; }
+  .neon-text { display: none; } /* Скрываем "оригинал" в классике */
+  table { width: 100%; border-collapse: collapse; margin: 15px 0; font-size: 14px; }
+  th, td { border: 1px solid #000; padding: 5px 8px; text-align: left; vertical-align: top; }
+  th { background-color: #fff; font-weight: bold; text-align: center; }
+  .total-amount { font-size: 16px; font-weight: bold; color: #000; }
+  .logo { max-height: 60px; } /* Без неона */
+  .legal-info { font-size: 12px; color: #000; margin-bottom: 20px; }
+  .bank-table { width: 100%; margin-bottom: 20px; }
+  .bank-table td { border: 1px solid #000; padding: 4px; }
+  hr { border-top: 2px solid #000; }
+`;
+
 export const generateInvoiceHTML = (
   seller: any, 
   buyer: any, 
   items: any[], 
   invoiceNumber: string,
-  date: string
+  date: string,
+  theme: 'cyber' | 'classic' = 'cyber'
 ) => {
   const total = items.reduce((sum, item) => sum + item.quantity * item.price, 0);
   const totalInWords = numberToRussianWords(total);
+  const styles = theme === 'cyber' ? CSS_CYBER : CSS_CLASSIC;
+  
+  // Адаптация логотипа для печати (если классика - убираем фильтры)
+  const logoHtml = seller.logoUrl ? `<img src="${seller.logoUrl}" class="logo" alt="Logo" />` : '';
 
   return `<!DOCTYPE html>
 <html lang="ru">
@@ -94,97 +132,26 @@ export const generateInvoiceHTML = (
     <meta charset="UTF-8">
     <title>Счет №${invoiceNumber}</title>
     <style>
-        body {
-            font-family: 'Arial', sans-serif;
-            background-color: #0a0a0a;
-            color: #ffffff;
-            padding: 40px;
-            margin: 0;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-        }
-        .container {
-            max-width: 800px;
-            margin: 0 auto;
-            border: 1px solid #333;
-            padding: 20px;
-            box-shadow: 0 0 20px rgba(188, 19, 254, 0.1);
-        }
-        .header-line {
-            border-bottom: 2px solid #bc13fe;
-            padding-bottom: 10px;
-            margin-bottom: 20px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        .logo {
-            max-height: 60px;
-            filter: drop-shadow(0 0 5px #bc13fe);
-        }
-        h1 {
-            color: #bc13fe;
-            margin: 0;
-            font-size: 24px;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-        }
-        .neon-text {
-            color: #39ff14;
-            text-shadow: 0 0 5px rgba(57, 255, 20, 0.5);
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            margin-top: 20px;
-            margin-bottom: 20px;
-        }
-        th, td {
-            border: 1px solid #333;
-            padding: 10px;
-            text-align: left;
-        }
-        th {
-            background-color: #1a1a1a;
-            color: #bc13fe;
-        }
-        .total-section {
-            text-align: right;
-            margin-top: 20px;
-            border-top: 2px solid #39ff14;
-            padding-top: 10px;
-        }
-        .total-amount {
-            font-size: 18px;
-            font-weight: bold;
-            color: #39ff14;
-        }
-        .legal-info {
-            font-size: 12px;
-            color: #888;
-            margin-bottom: 20px;
-        }
-        .bank-table td {
-             font-size: 12px;
-        }
-        .signatures {
-            margin-top: 40px;
-            display: flex;
-            justify-content: space-between;
-        }
-        .sign-box {
-            border-bottom: 1px solid #bc13fe;
-            width: 200px;
-            height: 30px;
+        ${styles}
+        /* Общие стили для подписи */
+        .signatures { margin-top: 40px; display: flex; justify-content: space-between; }
+        .sign-box { border-bottom: 1px solid ${theme === 'cyber' ? '#bc13fe' : '#000'}; width: 200px; height: 30px; }
+        .total-section { text-align: right; margin-top: 20px; border-top: 2px solid ${theme === 'cyber' ? '#39ff14' : '#000'}; padding-top: 10px; }
+        
+        @media print {
+             body { background-color: white !important; color: black !important; }
+             .container { border: none !important; box-shadow: none !important; }
+             .neon-text { display: none !important; }
+             /* Принудительно делаем таблицу черно-белой для печати даже в Cyber */
+             th { background-color: white !important; color: black !important; border: 1px solid black !important; }
+             td { border: 1px solid black !important; }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header-line">
-            <div>
-                ${seller.logoUrl ? `<img src="${seller.logoUrl}" class="logo" alt="Logo" />` : ''}
-            </div>
+            <div>${logoHtml}</div>
             <div style="text-align: right;">
                 <div style="font-size: 10px; color: #666;">ДОКУМЕНТ</div>
                 <div class="neon-text">ОРИГИНАЛ</div>
@@ -221,17 +188,17 @@ export const generateInvoiceHTML = (
         </div>
 
         <h1>Счет на оплату № ${invoiceNumber} от ${date}</h1>
-        <hr style="border-color: #333; margin: 15px 0;">
+        <hr style="border-color: ${theme === 'cyber' ? '#333' : '#000'}; margin: 15px 0;">
 
-        <table style="border: none;">
+        <table style="border: none; margin: 10px 0;">
             <tr style="border: none;">
-                <td style="border: none; width: 100px; color: #888;">Поставщик:</td>
+                <td style="border: none; width: 100px; color: ${theme === 'cyber' ? '#888' : '#000'};">Поставщик:</td>
                 <td style="border: none; font-weight: bold;">
                     ${seller.name}, ИНН ${seller.inn}, КПП ${seller.kpp}, ${seller.address}
                 </td>
             </tr>
             <tr style="border: none;">
-                <td style="border: none; width: 100px; color: #888;">Покупатель:</td>
+                <td style="border: none; width: 100px; color: ${theme === 'cyber' ? '#888' : '#000'};">Покупатель:</td>
                 <td style="border: none; font-weight: bold;">
                     ${buyer.name} ${buyer.inn ? `, ИНН ${buyer.inn}` : ''} ${buyer.address ? `, ${buyer.address}` : ''}
                 </td>
@@ -269,9 +236,9 @@ export const generateInvoiceHTML = (
             <div class="total-amount">Всего к оплате: ${total.toFixed(2)}</div>
         </div>
 
-        <div style="margin-top: 15px; font-style: italic; border-bottom: 1px solid #333; padding-bottom: 5px;">
+        <div style="margin-top: 15px; font-style: italic; border-bottom: 1px solid ${theme === 'cyber' ? '#333' : '#000'}; padding-bottom: 5px;">
             Всего наименований ${items.length}, на сумму ${total.toFixed(2)} руб.<br>
-            <span style="color: #bc13fe; font-weight: bold;">${totalInWords}</span>
+            <span style="font-weight: bold;">${totalInWords}</span>
         </div>
 
         <div class="signatures">
