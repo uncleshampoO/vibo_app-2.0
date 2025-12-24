@@ -9,7 +9,7 @@ const N8N_GET_PROFILES_URL = 'https://viboteam.app.n8n.cloud/webhook/get-profile
 const N8N_SAVE_PROFILE_URL = 'https://viboteam.app.n8n.cloud/webhook/save-profile';
 
 // 🔥 v7 - НОВАЯ ВЕРСИЯ КЭША ДЛЯ СБРОСА СТАРЫХ ДАННЫХ
-const STORAGE_KEY = 'vibo_profiles_cache_v7';
+const STORAGE_KEY = 'vibo_profiles_cache_v8';
 
 interface InvoiceGeneratorProps {}
 
